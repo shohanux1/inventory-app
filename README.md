@@ -1,50 +1,131 @@
-# Welcome to your Expo app 👋
+# Inventory Management App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A modern, minimalist inventory management application built with React Native and Expo.
 
-## Get started
+## Features
 
-1. Install dependencies
+### 📊 Dashboard
+- Real-time inventory overview with key metrics
+- Quick actions for common operations
+- Low stock alerts and notifications
+- Recent activity tracking
 
-   ```bash
-   npm install
-   ```
+### 📦 Product Management
+- List and grid view toggle for product catalog
+- Advanced search and filtering capabilities
+- Add, edit, and manage products
+- Real-time stock status indicators
+- Category-based organization
 
-2. Start the app
+### 🔄 Inventory Operations
+- Stock in/out tracking
+- Transfer between locations
+- Stock adjustments and corrections
+- Transaction history with detailed logs
+- Period-based filtering (Today, Week, Month, Year)
 
-   ```bash
-   npx expo start
-   ```
+### ⚙️ Settings
+- User profile management
+- Preferences and notifications
+- Dark/Light mode support
+- Backup and sync options
 
-In the output, you'll find options to open the app in a
+## Tech Stack
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- **Framework**: React Native with Expo
+- **Navigation**: Expo Router (file-based routing)
+- **Language**: TypeScript
+- **Backend**: Convex (ready for integration)
+- **Styling**: StyleSheet with dynamic theming
+- **Icons**: @expo/vector-icons (Ionicons)
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Design Philosophy
 
-## Get a fresh project
+The app follows a modern minimalist design approach with:
+- Clean, uncluttered interfaces
+- Consistent spacing and typography
+- Subtle shadows and borders
+- Intuitive navigation patterns
+- Color-coded status indicators
 
-When you're ready, run:
+## Project Structure
 
-```bash
-npm run reset-project
+```
+app/
+├── (auth)/          # Authentication screens
+├── (tabs)/          # Main app tabs
+│   ├── dashboard.tsx
+│   ├── products.tsx
+│   ├── inventory.tsx
+│   └── settings.tsx
+├── add-product.tsx  # Product creation
+└── _layout.tsx      # Root layout
+
+components/
+├── ProductCard.tsx  # Reusable product card
+├── SearchBar.tsx    # Search component
+├── Button.tsx       # Custom button
+├── Input.tsx        # Custom input
+└── ...
+
+constants/
+└── Colors.ts        # Theme colors
+
+convex/             # Backend configuration
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Getting Started
 
-## Learn more
+### Prerequisites
 
-To learn more about developing your project with Expo, look at the following resources:
+- Node.js 18+ 
+- npm or yarn
+- Expo CLI
+- iOS Simulator or Android Emulator
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Installation
 
-## Join the community
+1. Clone the repository:
+```bash
+git clone https://github.com/shohanux1/inventory-app.git
+cd inventory-app
+```
 
-Join our community of developers creating universal apps.
+2. Install dependencies:
+```bash
+npm install
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+3. Start the development server:
+```bash
+npx expo start
+```
+
+4. Run on your preferred platform:
+- Press `i` for iOS
+- Press `a` for Android
+- Scan QR code with Expo Go app
+
+## Available Scripts
+
+- `npm start` - Start the Expo development server
+- `npm run android` - Run on Android
+- `npm run ios` - Run on iOS
+- `npm run web` - Run in web browser
+- `npm test` - Run tests
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License.
+
+## Author
+
+Created with ❤️ by [shohanux1](https://github.com/shohanux1)
+
+---
+
+Built with React Native, Expo, and modern development practices for efficient inventory management.
