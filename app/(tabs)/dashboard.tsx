@@ -201,7 +201,7 @@ export default function Dashboard() {
             <ActionButton
               label="Stock Out"
               icon="arrow-up-circle-outline"
-              onPress={() => router.push("/(tabs)/inventory")}
+              onPress={() => router.push("/stock-out")}
               colors={colors}
             />
             <ActionButton
