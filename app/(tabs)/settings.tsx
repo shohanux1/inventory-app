@@ -106,6 +106,33 @@ export default function Settings() {
           </View>
         </View>
 
+        {/* Store Management Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Store Management</Text>
+          <View style={styles.sectionContent}>
+            <SettingItem
+              icon="grid-outline"
+              title="Categories"
+              subtitle="Manage product categories"
+              onPress={() => router.push("/categories")}
+              colors={colors}
+            />
+            <SettingItem
+              icon="people-outline"
+              title="Customers"
+              subtitle="Manage customer database"
+              onPress={() => router.push("/customers")}
+              colors={colors}
+            />
+            <SettingItem
+              icon="pricetag-outline"
+              title="Discounts & Offers"
+              subtitle="Manage promotions"
+              colors={colors}
+            />
+          </View>
+        </View>
+
         {/* Account Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>

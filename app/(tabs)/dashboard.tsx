@@ -189,13 +189,13 @@ export default function Dashboard() {
             <ActionButton
               label="Add Product"
               icon="add-circle-outline"
-              onPress={() => router.push("/(tabs)/products")}
+              onPress={() => router.push("/add-product")}
               colors={colors}
             />
             <ActionButton
               label="Stock In"
               icon="arrow-down-circle-outline"
-              onPress={() => router.push("/(tabs)/inventory")}
+              onPress={() => router.push("/stock-in")}
               colors={colors}
             />
             <ActionButton
@@ -205,9 +205,9 @@ export default function Dashboard() {
               colors={colors}
             />
             <ActionButton
-              label="Scan"
-              icon="scan-outline"
-              onPress={() => {}}
+              label="Sell"
+              icon="cart-outline"
+              onPress={() => router.push("/sell")}
               colors={colors}
             />
           </View>

@@ -34,7 +34,7 @@ export default function LoginScreen() {
             style={styles.backButton}
             onPress={() => router.back()}
           >
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+            <Ionicons name="arrow-back" size={24} color="#3B82F6" />
           </TouchableOpacity>
 
           <View style={styles.headerSection}>
@@ -79,8 +79,7 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.socialButtons}>
-              <SocialButton provider="google" compact />
-              <SocialButton provider="apple" compact />
+              <SocialButton provider="google" />
             </View>
           </View>
 
@@ -123,7 +122,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#111827',
+    color: '#3B82F6',
     marginBottom: 8,
     letterSpacing: -1,
   },
@@ -142,7 +141,7 @@ const styles = StyleSheet.create({
   },
   forgotPasswordText: {
     fontSize: 14,
-    color: '#111827',
+    color: '#3B82F6',
     fontWeight: '500',
   },
   divider: {
@@ -162,9 +161,6 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   socialButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
     marginBottom: 20,
   },
   footer: {
@@ -179,7 +175,7 @@ const styles = StyleSheet.create({
   },
   footerLink: {
     fontSize: 14,
-    color: '#111827',
+    color: '#3B82F6',
     fontWeight: '600',
   },
 });

@@ -50,19 +50,19 @@ export default function SocialButton({
   return (
     <TouchableOpacity style={styles.button} activeOpacity={0.7} {...props}>
       {getProviderIcon()}
-      <Text style={styles.text}>{getProviderName()}</Text>
+      <Text style={styles.text}>Continue with {getProviderName()}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    flex: 1,
+    width: '100%',
     height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderRadius: 12,
