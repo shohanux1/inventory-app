@@ -60,7 +60,7 @@ export default function Button({
     >
       {loading ? (
         <ActivityIndicator 
-          color={variant === 'primary' ? '#FFFFFF' : '#111827'} 
+          color={variant === 'primary' ? '#FFFFFF' : '#3B82F6'} 
           size="small" 
         />
       ) : (
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   },
   // Variants
   primary: {
-    backgroundColor: '#111827',
+    backgroundColor: '#3B82F6',
   },
   secondary: {
     backgroundColor: '#FFFFFF',
@@ -118,10 +118,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   secondaryText: {
-    color: '#111827',
+    color: '#3B82F6',
   },
   ghostText: {
-    color: '#111827',
+    color: '#3B82F6',
   },
   smallText: {
     fontSize: 14,

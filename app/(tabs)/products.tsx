@@ -10,6 +10,7 @@ import {
   Modal,
   Platform,
   Image,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -215,6 +216,15 @@ export default function Products() {
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [products] = useState(SAMPLE_PRODUCTS);
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<typeof SAMPLE_PRODUCTS[0] | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    sku: "",
+    price: "",
+    stock: "",
+    category: "",
+  });
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -239,11 +249,38 @@ export default function Products() {
   });
 
   const handleProductPress = (product: typeof SAMPLE_PRODUCTS[0]) => {
-    console.log("Product pressed:", product.id);
+    router.push(`/product-details/${product.id}`);
   };
 
   const handleProductEdit = (product: typeof SAMPLE_PRODUCTS[0]) => {
-    console.log("Edit product:", product.id);
+    setSelectedProduct(product);
+    setEditForm({
+      name: product.name,
+      sku: product.sku,
+      price: product.price.toString(),
+      stock: product.stock.toString(),
+      category: product.category,
+    });
+    setEditModalVisible(true);
+  };
+
+  const handleSaveEdit = () => {
+    console.log("Save product edits:", editForm);
+    // Here you would update the product in your backend/state
+    setEditModalVisible(false);
+    setSelectedProduct(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditModalVisible(false);
+    setSelectedProduct(null);
+    setEditForm({
+      name: "",
+      sku: "",
+      price: "",
+      stock: "",
+      category: "",
+    });
   };
 
   const handleAddProduct = () => {
@@ -359,6 +396,136 @@ export default function Products() {
         onSelectSort={setSortBy}
         colors={colors}
       />
+
+      {/* Edit Product Modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={handleCancelEdit}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.editModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Product</Text>
+              <TouchableOpacity onPress={handleCancelEdit}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.editForm}>
+                <View style={styles.formGroup}>
+                  <View style={styles.labelContainer}>
+                    <Ionicons name="pricetag-outline" size={16} color={colors.textSecondary} />
+                    <Text style={styles.formLabel}>Product Name</Text>
+                  </View>
+                  <TextInput
+                    style={styles.formInput}
+                    value={editForm.name}
+                    onChangeText={(text) => setEditForm({...editForm, name: text})}
+                    placeholder="Enter product name"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <View style={styles.labelContainer}>
+                    <Ionicons name="barcode-outline" size={16} color={colors.textSecondary} />
+                    <Text style={styles.formLabel}>SKU</Text>
+                  </View>
+                  <TextInput
+                    style={styles.formInput}
+                    value={editForm.sku}
+                    onChangeText={(text) => setEditForm({...editForm, sku: text})}
+                    placeholder="Enter SKU"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+
+                <View style={styles.formRow}>
+                  <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                    <View style={styles.labelContainer}>
+                      <Ionicons name="cash-outline" size={16} color={colors.textSecondary} />
+                      <Text style={styles.formLabel}>Price</Text>
+                    </View>
+                    <TextInput
+                      style={styles.formInput}
+                      value={editForm.price}
+                      onChangeText={(text) => setEditForm({...editForm, price: text})}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+
+                  <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                    <View style={styles.labelContainer}>
+                      <Ionicons name="cube-outline" size={16} color={colors.textSecondary} />
+                      <Text style={styles.formLabel}>Stock</Text>
+                    </View>
+                    <TextInput
+                      style={styles.formInput}
+                      value={editForm.stock}
+                      onChangeText={(text) => setEditForm({...editForm, stock: text})}
+                      placeholder="0"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <View style={styles.labelContainer}>
+                    <Ionicons name="grid-outline" size={16} color={colors.textSecondary} />
+                    <Text style={styles.formLabel}>Category</Text>
+                  </View>
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.categorySelector}
+                  >
+                    {CATEGORIES.filter(cat => cat !== "All").map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          styles.categoryOption,
+                          editForm.category === cat && styles.categoryOptionActive,
+                        ]}
+                        onPress={() => setEditForm({...editForm, category: cat})}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryOptionText,
+                            editForm.category === cat && styles.categoryOptionTextActive,
+                          ]}
+                        >
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={handleCancelEdit}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.saveButton}
+                onPress={handleSaveEdit}
+              >
+                <Text style={styles.saveButtonText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -606,5 +773,103 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
     color: colors.textSecondary,
+  },
+  // Edit Modal Styles
+  editModalContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === "ios" ? 34 : 20,
+    maxHeight: "80%",
+  },
+  editForm: {
+    paddingVertical: 20,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  labelContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: colors.text,
+  },
+  formInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+  },
+  formRow: {
+    flexDirection: "row",
+    marginBottom: 16,
+  },
+  categorySelector: {
+    maxHeight: 40,
+  },
+  categoryOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginRight: 8,
+  },
+  categoryOptionActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  categoryOptionText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: colors.textSecondary,
+  },
+  categoryOptionTextActive: {
+    color: "#FFFFFF",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 12,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+  },
+  cancelButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  saveButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+  },
+  saveButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });

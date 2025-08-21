@@ -30,40 +30,39 @@ export default function ProductCard({ product, onPress, onEdit, colors }: Produc
   const stockStatus = getStockStatus();
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.95}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.imageContainer}>
         {product.image ? (
           <Image source={{ uri: product.image }} style={styles.image} />
         ) : (
           <View style={styles.imagePlaceholder}>
-            <Ionicons name="image-outline" size={24} color={colors.textMuted} />
+            <Ionicons name="cube-outline" size={20} color={colors.textMuted} />
           </View>
         )}
       </View>
       
       <View style={styles.content}>
-        <View style={styles.topRow}>
-          <Text style={styles.name} numberOfLines={1}>{product.name}</Text>
+        <View style={styles.header}>
+          <View style={styles.titleSection}>
+            <Text style={styles.name} numberOfLines={1}>{product.name}</Text>
+            <Text style={styles.sku}>SKU: {product.sku}</Text>
+          </View>
           {onEdit && (
-            <TouchableOpacity onPress={onEdit} style={styles.moreButton}>
-              <Ionicons name="ellipsis-horizontal" size={18} color={colors.textSecondary} />
+            <TouchableOpacity onPress={onEdit} style={styles.editButton}>
+              <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
         
-        <Text style={styles.category}>{product.category}</Text>
-        
-        <View style={styles.bottomRow}>
-          <View style={styles.priceSection}>
+        <View style={styles.footer}>
+          <View style={styles.priceContainer}>
             <Text style={styles.price}>${product.price.toFixed(2)}</Text>
-            <Text style={styles.sku}>SKU: {product.sku}</Text>
+            <Text style={styles.category}>{product.category}</Text>
           </View>
           
-          <View style={[styles.stockBadge, { backgroundColor: `${stockStatus.color}15` }]}>
-            <View style={[styles.stockDot, { backgroundColor: stockStatus.color }]} />
-            <Text style={[styles.stockText, { color: stockStatus.color }]}>
-              {product.stock} units
-            </Text>
+          <View style={styles.stockInfo}>
+            <View style={[styles.stockIndicator, { backgroundColor: stockStatus.color }]} />
+            <Text style={styles.stockText}>{product.stock} in stock</Text>
           </View>
         </View>
       </View>
@@ -75,19 +74,25 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   card: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 12,
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
     overflow: 'hidden',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
   imageContainer: {
-    width: 80,
-    backgroundColor: '#FFFFFF',
-    alignSelf: 'stretch',
-    borderRightWidth: 1,
-    borderRightColor: colors.border,
+    width: 72,
+    height: 72,
+    backgroundColor: colors.background,
+    margin: 12,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   image: {
     width: '100%',
@@ -98,65 +103,75 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.background,
   },
   content: {
     flex: 1,
-    padding: 12,
+    paddingVertical: 12,
+    paddingRight: 12,
+    justifyContent: 'space-between',
   },
-  topRow: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 4,
   },
-  name: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text,
+  titleSection: {
     flex: 1,
   },
-  moreButton: {
-    marginLeft: 8,
-    padding: 2,
+  name: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text,
+    marginBottom: 3,
   },
-  category: {
+  sku: {
     fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 8,
+    color: colors.textMuted,
   },
-  bottomRow: {
+  editButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    marginTop: 8,
   },
-  priceSection: {
+  priceContainer: {
     flex: 1,
   },
   price: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
     color: colors.text,
+    marginBottom: 2,
   },
-  sku: {
+  category: {
     fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 2,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
-  stockBadge: {
+  stockInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
+    gap: 6,
   },
-  stockDot: {
+  stockIndicator: {
     width: 6,
     height: 6,
     borderRadius: 3,
   },
   stockText: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '400',
   },
 });
