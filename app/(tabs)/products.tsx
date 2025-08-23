@@ -1,23 +1,25 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TouchableOpacity,
-  FlatList,
-  Modal,
-  Platform,
-  Image,
-  TextInput,
-} from "react-native";
+import ProductCard from "@/components/ProductCard";
+import { SearchBarWithScanner } from "@/components/SearchBarWithScanner";
+import BarcodeScanner from "@/components/BarcodeScanner";
+import { Colors } from "@/constants/Colors";
+import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Colors } from "../../constants/Colors";
-import { useColorScheme } from "../../hooks/useColorScheme";
-import SearchBar from "../../components/SearchBar";
-import ProductCard from "../../components/ProductCard";
+import React, { useState } from "react";
+import {
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
 
 // Sample data - replace with actual data from your backend
 const SAMPLE_PRODUCTS = [
@@ -42,7 +44,7 @@ const SAMPLE_PRODUCTS = [
   {
     id: "3",
     name: "iPad Pro 12.9",
-    sku: "IPD-PRO-129",
+    sku: "735745809198",
     price: 1099.99,
     stock: 0,
     category: "Tablets",
@@ -218,6 +220,7 @@ export default function Products() {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<typeof SAMPLE_PRODUCTS[0] | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
   const [editForm, setEditForm] = useState({
     name: "",
     sku: "",
@@ -287,6 +290,13 @@ export default function Products() {
     router.push("/add-product");
   };
 
+  const handleBarcodeScan = (data: string) => {
+    setShowScanner(false);
+    setSearchQuery(data);
+    // You can add logic here to search for product by barcode
+    console.log("Scanned barcode:", data);
+  };
+
   const ListHeader = () => (
     <>
       <View style={styles.header}>
@@ -311,13 +321,16 @@ export default function Products() {
         </View>
       </View>
 
-      <SearchBar
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Search products or SKU..."
-        onFilter={() => setFilterModalVisible(true)}
-        colors={colors}
-      />
+      <View style={{ paddingHorizontal: 20 }}>
+        <SearchBarWithScanner
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onScanPress={() => setShowScanner(true)}
+          onFilterPress={() => setFilterModalVisible(true)}
+          placeholder="Search products or SKU..."
+          showFilter={true}
+        />
+      </View>
 
       <ScrollView 
         horizontal 
@@ -526,6 +539,13 @@ export default function Products() {
           </View>
         </View>
       </Modal>
+
+      {/* Barcode Scanner Modal */}
+      <BarcodeScanner
+        visible={showScanner}
+        onScan={handleBarcodeScan}
+        onClose={() => setShowScanner(false)}
+      />
     </SafeAreaView>
   );
 }

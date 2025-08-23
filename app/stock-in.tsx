@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Keyboard,
@@ -12,10 +12,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import BarcodeScanner from "../components/BarcodeScanner";
+import { SearchBarWithScanner } from "../components/SearchBarWithScanner";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
 
@@ -39,7 +39,6 @@ export default function StockIn() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
-  const searchInputRef = useRef<TextInput>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -54,7 +53,7 @@ export default function StockIn() {
 
   // Mock product data - replace with actual data from your backend
   const mockProducts: Product[] = [
-    { id: "1", name: "iPhone 14 Pro", sku: "IPH14P", currentStock: 45 },
+    { id: "1", name: "iPhone 14 Pro", sku: "735745809198", currentStock: 45 },
     { id: "2", name: "MacBook Air M2", sku: "MBA-M2", currentStock: 23 },
     { id: "3", name: "AirPods Pro", sku: "APP-2", currentStock: 67 },
     { id: "4", name: "iPad Pro 11", sku: "IPD11", currentStock: 12 },
@@ -159,12 +158,7 @@ export default function StockIn() {
               <Ionicons name="arrow-back" size={24} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Stock In</Text>
-            <TouchableOpacity 
-              style={styles.scanButton}
-              onPress={() => setShowScanner(true)}
-            >
-              <Ionicons name="scan-outline" size={24} color={colors.primary} />
-            </TouchableOpacity>
+            <View style={{ width: 24 }} />
           </View>
 
           <ScrollView 
@@ -178,55 +172,42 @@ export default function StockIn() {
             <Text style={styles.sectionTitle}>Product Details</Text>
             
             <View style={styles.searchWrapper}>
-              {/* Search Input */}
-              <TouchableOpacity 
-                style={[styles.searchInputContainer, isFocused && styles.searchInputContainerActive]}
-                onPress={() => searchInputRef.current?.focus()}
-                activeOpacity={1}
-              >
-                <Ionicons name="search-outline" size={20} color={colors.textSecondary} />
-                <TextInput
-                  ref={searchInputRef}
-                  style={styles.searchInput}
-                  placeholder="Search or scan product"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => {
-                    // Don't close dropdown on blur - it will close when item is selected
-                  }}
-                  placeholderTextColor={colors.textMuted}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      setSearchQuery("");
-                      setSelectedProduct(null);
-                    }}
-                    style={styles.clearButton}
+              <SearchBarWithScanner
+                searchQuery={searchQuery}
+                onSearchChange={(text) => {
+                  setSearchQuery(text);
+                  if (text.length === 0) {
+                    setSelectedProduct(null);
+                  }
+                  if (text.length > 0 && !isFocused) {
+                    setIsFocused(true);
+                  }
+                }}
+                onSearchFocus={() => setIsFocused(true)}
+                onSearchBlur={() => {
+                  setTimeout(() => {
+                    if (!selectedProduct) {
+                      setIsFocused(false);
+                    }
+                  }, 200);
+                }}
+                onScanPress={() => setShowScanner(true)}
+                placeholder="Search or scan product"
+              />
+              
+              {/* Product Search Results Dropdown */}
+              {isFocused && searchQuery.length > 0 && !selectedProduct && (
+                <View style={styles.productDropdown}>
+                  <ScrollView 
+                    style={styles.productDropdownScroll}
+                    keyboardShouldPersistTaps="always"
+                    nestedScrollEnabled={true}
                   >
-                    <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </TouchableOpacity>
-
-              {/* Dropdown Product List */}
-              {isFocused && !selectedProduct && (
-                <TouchableWithoutFeedback>
-                  <View style={styles.dropdownContainer}>
-                    <ScrollView 
-                      style={styles.productList} 
-                      nestedScrollEnabled={true}
-                      showsVerticalScrollIndicator={true}
-                      keyboardShouldPersistTaps="always"
-                      scrollEnabled={true}
-                      bounces={true}
-                    >
                     {filteredProducts.length > 0 ? (
                       filteredProducts.map((product) => (
                         <TouchableOpacity
                           key={product.id}
-                          style={styles.productItem}
+                          style={styles.productDropdownItem}
                           activeOpacity={0.7}
                           onPress={() => {
                             setSelectedProduct(product);
@@ -235,21 +216,26 @@ export default function StockIn() {
                             Keyboard.dismiss();
                           }}
                         >
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.productName}>{product.name}</Text>
-                            <Text style={styles.productSku}>SKU: {product.sku}</Text>
+                          <View style={styles.productDropdownInfo}>
+                            <Text style={styles.productDropdownName} numberOfLines={1}>
+                              {product.name}
+                            </Text>
+                            <Text style={styles.productDropdownDetails}>
+                              SKU: {product.sku} • Stock: {product.currentStock}
+                            </Text>
                           </View>
-                          <Text style={styles.productStock}>Stock: {product.currentStock}</Text>
+                          <View style={styles.stockBadge}>
+                            <Text style={styles.stockBadgeText}>{product.currentStock}</Text>
+                          </View>
                         </TouchableOpacity>
                       ))
                     ) : (
-                      <View style={styles.noResults}>
-                        <Text style={styles.noResultsText}>No products found</Text>
+                      <View style={styles.noProductsFound}>
+                        <Text style={styles.noProductsText}>No products found</Text>
                       </View>
                     )}
                   </ScrollView>
                 </View>
-                </TouchableWithoutFeedback>
               )}
             </View>
 
@@ -484,6 +470,67 @@ const createStyles = (colors: typeof Colors.light) =>
     },
     clearButton: {
       padding: 4,
+    },
+    productDropdown: {
+      position: "absolute",
+      top: "100%",
+      left: 0,
+      right: 0,
+      marginTop: 4,
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      maxHeight: 250,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    productDropdownScroll: {
+      maxHeight: 250,
+    },
+    productDropdownItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderLight,
+    },
+    productDropdownInfo: {
+      flex: 1,
+      marginRight: 10,
+    },
+    productDropdownName: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.text,
+      marginBottom: 2,
+    },
+    productDropdownDetails: {
+      fontSize: 11,
+      color: colors.textMuted,
+    },
+    stockBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 8,
+      backgroundColor: colors.primary + "20",
+    },
+    stockBadgeText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: colors.primary,
+    },
+    noProductsFound: {
+      padding: 20,
+      alignItems: "center",
+    },
+    noProductsText: {
+      fontSize: 13,
+      color: colors.textSecondary,
     },
     dropdownContainer: {
       position: "absolute",

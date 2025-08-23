@@ -1,22 +1,23 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-  Platform,
-  TextInput,
-  Alert,
-  Modal,
-  KeyboardAvoidingView,
-} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import BarcodeScanner from "../components/BarcodeScanner";
+import { SearchBarWithScanner } from "../components/SearchBarWithScanner";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
-import BarcodeScanner from "../components/BarcodeScanner";
 
 interface Product {
   id: string;
@@ -41,7 +42,7 @@ interface Customer {
 
 // Mock products data - in real app, this would come from your database
 const MOCK_PRODUCTS: Product[] = [
-  { id: "1", name: "iPhone 15 Pro", price: 999.99, barcode: "123456789", category: "Electronics", stock: 25 },
+  { id: "1", name: "iPhone 15 Pro", price: 999.99, barcode: "735745809198", category: "Electronics", stock: 25 },
   { id: "2", name: "MacBook Air M2", price: 1299.99, barcode: "987654321", category: "Electronics", stock: 15 },
   { id: "3", name: "AirPods Pro", price: 249.99, barcode: "456789123", category: "Electronics", stock: 50 },
   { id: "4", name: "iPad Pro 11", price: 799.99, barcode: "789123456", category: "Electronics", stock: 20 },
@@ -125,9 +126,10 @@ export default function Sell() {
     
     if (product) {
       addToCart(product);
-      Alert.alert("Product Added", `${product.name} added to cart`);
+      // Product added silently - no alert needed
     } else {
-      Alert.alert("Product Not Found", `No product found with barcode: ${barcode}`);
+      // Could show a toast or inline message instead of alert
+      setSearchQuery(barcode); // Show the barcode in search field if not found
     }
   };
 
@@ -281,29 +283,19 @@ export default function Sell() {
 
           {/* Search Bar */}
           <View style={styles.searchWrapper}>
-            <View style={styles.searchBar}>
-              <Ionicons name="search" size={18} color={colors.textSecondary} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search or scan products..."
-                placeholderTextColor={colors.textMuted}
-                value={searchQuery}
-                onChangeText={(text) => {
-                  setSearchQuery(text);
-                  if (text.length > 0 && !showProductList) {
-                    setShowProductList(true);
-                  }
-                }}
-                onFocus={handleSearchFocus}
-                onBlur={handleSearchBlur}
-              />
-              <TouchableOpacity 
-                style={styles.scanIconButton}
-                onPress={() => setShowScanner(true)}
-              >
-                <Ionicons name="barcode-outline" size={20} color={colors.primary} />
-              </TouchableOpacity>
-            </View>
+            <SearchBarWithScanner
+              searchQuery={searchQuery}
+              onSearchChange={(text) => {
+                setSearchQuery(text);
+                if (text.length > 0 && !showProductList) {
+                  setShowProductList(true);
+                }
+              }}
+              onSearchFocus={handleSearchFocus}
+              onSearchBlur={handleSearchBlur}
+              onScanPress={() => setShowScanner(true)}
+              placeholder="Search or scan products..."
+            />
             
             {/* Product Search Results Dropdown */}
             {showProductList && searchQuery.length > 0 && (
