@@ -13,14 +13,34 @@ import { Ionicons } from '@expo/vector-icons';
 import Input from '../../components/Input';
 import Button from '../../components/Button';
 import SocialButton from '../../components/SocialButton';
+import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { signIn } = useAuth();
+  const { showToast } = useToast();
 
   const handleLogin = async () => {
-    // Direct navigation for development
-    router.replace('/(tabs)/dashboard');
+    if (!email || !password) {
+      showToast('Please fill in all fields', 'warning');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await signIn(email, password);
+      if (result.success) {
+        showToast('Welcome back!', 'success');
+        router.replace('/(tabs)/dashboard');
+      } else {
+        showToast(result.message || 'Sign in failed', 'error');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -68,8 +88,9 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <Button
-              title="Sign in"
+              title={isLoading ? "Signing in..." : "Sign in"}
               onPress={handleLogin}
+              disabled={isLoading}
             />
 
             <View style={styles.divider}>

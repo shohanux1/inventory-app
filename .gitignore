@@ -36,8 +36,34 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
+.env.production
 
 # typescript
 *.tsbuildinfo
+
+# EAS Build
+eas.json
+credentials.json
+secrets.json
+
+# Build artifacts
+*.apk
+*.aab
+*.ipa
+build-*.apk
+
+# Supabase
+supabase/.env
+supabase/.env.local
+**/supabase/config.toml
+
+# IDE
+.vscode/
+.idea/
+
+# Test data
+sampleData.jsonl
+*.jsonl
 
 app-example

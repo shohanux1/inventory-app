@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,85 +10,41 @@ import {
   TextInput,
   Modal,
   Switch,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
-
-interface Customer {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  totalPurchases: number;
-  loyaltyPoints: number;
-  joinDate: string;
-  status: "active" | "inactive";
-}
-
-// Mock customers data
-const MOCK_CUSTOMERS: Customer[] = [
-  { 
-    id: "1", 
-    name: "John Smith", 
-    email: "john.smith@email.com", 
-    phone: "+1 234-567-8900",
-    totalPurchases: 45,
-    loyaltyPoints: 450,
-    joinDate: "Jan 15, 2024",
-    status: "active"
-  },
-  { 
-    id: "2", 
-    name: "Sarah Johnson", 
-    email: "sarah.j@email.com", 
-    phone: "+1 234-567-8901",
-    totalPurchases: 32,
-    loyaltyPoints: 320,
-    joinDate: "Feb 20, 2024",
-    status: "active"
-  },
-  { 
-    id: "3", 
-    name: "Michael Brown", 
-    email: "m.brown@email.com", 
-    phone: "+1 234-567-8902",
-    totalPurchases: 67,
-    loyaltyPoints: 670,
-    joinDate: "Dec 10, 2023",
-    status: "active"
-  },
-  { 
-    id: "4", 
-    name: "Emma Davis", 
-    email: "emma.davis@email.com", 
-    phone: "+1 234-567-8903",
-    totalPurchases: 12,
-    loyaltyPoints: 120,
-    joinDate: "Mar 5, 2024",
-    status: "inactive"
-  },
-  { 
-    id: "5", 
-    name: "Robert Wilson", 
-    email: "r.wilson@email.com", 
-    phone: "+1 234-567-8904",
-    totalPurchases: 89,
-    loyaltyPoints: 890,
-    joinDate: "Nov 22, 2023",
-    status: "active"
-  },
-];
+import { useCustomers, Customer } from "../contexts/CustomerContext";
+import { useToast } from "../contexts/ToastContext";
 
 export default function Customers() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { showToast } = useToast();
   
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
+  // Customer context
+  const {
+    customers,
+    isLoading,
+    searchQuery,
+    setSearchQuery,
+    filterStatus,
+    setFilterStatus,
+    filteredCustomers,
+    totalCustomers,
+    totalLoyaltyPoints,
+    activeCustomers,
+    fetchCustomers,
+    createCustomer,
+    updateCustomer,
+    deleteCustomer,
+  } = useCustomers();
+  
   const [showCustomerDetail, setShowCustomerDetail] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -102,23 +58,73 @@ export default function Customers() {
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(true);
   const [smsNotifications, setSmsNotifications] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const filteredCustomers = MOCK_CUSTOMERS.filter(customer => {
-    const matchesSearch = customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          customer.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          customer.phone.includes(searchQuery);
-    const matchesFilter = filterStatus === "all" || customer.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchCustomers();
+    setIsRefreshing(false);
+  };
 
   const handleCustomerPress = (customer: Customer) => {
     setSelectedCustomer(customer);
     setShowCustomerDetail(true);
   };
 
+  const handleAddCustomer = async () => {
+    if (!customerForm.name.trim() || !customerForm.phone.trim()) {
+      showToast("Name and phone are required", "warning");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const newCustomer = await createCustomer({
+      ...customerForm,
+      loyalty_enabled: loyaltyEnabled,
+      email_updates: emailUpdates,
+      sms_notifications: smsNotifications,
+    });
+
+    if (newCustomer) {
+      setShowAddModal(false);
+      setCustomerForm({ name: "", email: "", phone: "", address: "", notes: "" });
+      setLoyaltyEnabled(true);
+      setEmailUpdates(true);
+      setSmsNotifications(false);
+    }
+    setIsSubmitting(false);
+  };
+
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  if (isLoading && customers.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Customers</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading customers...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -158,7 +164,7 @@ export default function Customers() {
             onPress={() => setFilterStatus("all")}
           >
             <Text style={[styles.filterText, filterStatus === "all" && styles.filterTextActive]}>
-              All ({MOCK_CUSTOMERS.length})
+              All ({totalCustomers})
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -166,7 +172,7 @@ export default function Customers() {
             onPress={() => setFilterStatus("active")}
           >
             <Text style={[styles.filterText, filterStatus === "active" && styles.filterTextActive]}>
-              Active ({MOCK_CUSTOMERS.filter(c => c.status === "active").length})
+              Active ({activeCustomers})
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -174,7 +180,7 @@ export default function Customers() {
             onPress={() => setFilterStatus("inactive")}
           >
             <Text style={[styles.filterText, filterStatus === "inactive" && styles.filterTextActive]}>
-              Inactive ({MOCK_CUSTOMERS.filter(c => c.status === "inactive").length})
+              Inactive ({totalCustomers - activeCustomers})
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -184,27 +190,34 @@ export default function Customers() {
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
           <Ionicons name="people" size={20} color={colors.primary} />
-          <Text style={styles.statValue}>{MOCK_CUSTOMERS.length}</Text>
+          <Text style={styles.statValue}>{totalCustomers}</Text>
           <Text style={styles.statLabel}>Total Customers</Text>
         </View>
         <View style={styles.statCard}>
           <Ionicons name="star" size={20} color={colors.warning} />
-          <Text style={styles.statValue}>
-            {MOCK_CUSTOMERS.reduce((sum, c) => sum + c.loyaltyPoints, 0)}
-          </Text>
+          <Text style={styles.statValue}>{totalLoyaltyPoints}</Text>
           <Text style={styles.statLabel}>Total Points</Text>
         </View>
         <View style={styles.statCard}>
           <Ionicons name="trending-up" size={20} color={colors.success} />
-          <Text style={styles.statValue}>
-            {MOCK_CUSTOMERS.filter(c => c.status === "active").length}
-          </Text>
+          <Text style={styles.statValue}>{activeCustomers}</Text>
           <Text style={styles.statLabel}>Active</Text>
         </View>
       </View>
 
       {/* Customer List */}
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+      >
         {filteredCustomers.map((customer) => (
           <TouchableOpacity
             key={customer.id}
@@ -231,21 +244,21 @@ export default function Customers() {
                   </Text>
                 </View>
               </View>
-              <Text style={styles.customerContact}>{customer.email}</Text>
+              {customer.email && <Text style={styles.customerContact}>{customer.email}</Text>}
               <Text style={styles.customerContact}>{customer.phone}</Text>
               
               <View style={styles.customerStats}>
                 <View style={styles.statItem}>
                   <Ionicons name="cart-outline" size={14} color={colors.textSecondary} />
-                  <Text style={styles.statItemText}>{customer.totalPurchases} orders</Text>
+                  <Text style={styles.statItemText}>{customer.total_purchases} orders</Text>
                 </View>
                 <View style={styles.statItem}>
                   <Ionicons name="star-outline" size={14} color={colors.warning} />
-                  <Text style={styles.statItemText}>{customer.loyaltyPoints} pts</Text>
+                  <Text style={styles.statItemText}>{customer.loyalty_points} pts</Text>
                 </View>
                 <View style={styles.statItem}>
                   <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-                  <Text style={styles.statItemText}>{customer.joinDate}</Text>
+                  <Text style={styles.statItemText}>{formatDate(customer.created_at)}</Text>
                 </View>
               </View>
             </View>
@@ -309,7 +322,7 @@ export default function Customers() {
                   <Text style={styles.detailSectionTitle}>Contact Information</Text>
                   <View style={styles.detailRow}>
                     <Ionicons name="mail-outline" size={18} color={colors.textSecondary} />
-                    <Text style={styles.detailText}>{selectedCustomer.email}</Text>
+                    <Text style={styles.detailText}>{selectedCustomer.email || 'Not provided'}</Text>
                   </View>
                   <View style={styles.detailRow}>
                     <Ionicons name="call-outline" size={18} color={colors.textSecondary} />
@@ -321,11 +334,11 @@ export default function Customers() {
                   <Text style={styles.detailSectionTitle}>Statistics</Text>
                   <View style={styles.detailStatsGrid}>
                     <View style={styles.detailStatCard}>
-                      <Text style={styles.detailStatValue}>{selectedCustomer.totalPurchases}</Text>
+                      <Text style={styles.detailStatValue}>{selectedCustomer.total_purchases}</Text>
                       <Text style={styles.detailStatLabel}>Total Orders</Text>
                     </View>
                     <View style={styles.detailStatCard}>
-                      <Text style={styles.detailStatValue}>{selectedCustomer.loyaltyPoints}</Text>
+                      <Text style={styles.detailStatValue}>{selectedCustomer.loyalty_points}</Text>
                       <Text style={styles.detailStatLabel}>Loyalty Points</Text>
                     </View>
                   </View>
@@ -333,7 +346,7 @@ export default function Customers() {
 
                 <View style={styles.detailSection}>
                   <Text style={styles.detailSectionTitle}>Member Since</Text>
-                  <Text style={styles.detailText}>{selectedCustomer.joinDate}</Text>
+                  <Text style={styles.detailText}>{formatDate(selectedCustomer.created_at)}</Text>
                 </View>
 
                 <View style={styles.modalActions}>
@@ -533,8 +546,14 @@ export default function Customers() {
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveButton}>
-                <Text style={styles.saveButtonText}>Add Customer</Text>
+              <TouchableOpacity 
+                style={[styles.saveButton, isSubmitting && { opacity: 0.6 }]}
+                onPress={handleAddCustomer}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.saveButtonText}>
+                  {isSubmitting ? "Adding..." : "Add Customer"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -975,5 +994,15 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: "white",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });

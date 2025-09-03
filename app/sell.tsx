@@ -1,8 +1,9 @@
+import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -17,85 +18,137 @@ import {
 import BarcodeScanner from "../components/BarcodeScanner";
 import { SearchBarWithScanner } from "../components/SearchBarWithScanner";
 import { Colors } from "../constants/Colors";
+import { useInventory } from "../contexts/InventoryContext";
+import { Product, useProducts } from "../contexts/ProductContext";
+import { useToast } from "../contexts/ToastContext";
+import { useCustomers, Customer } from "../contexts/CustomerContext";
+import { useCurrency } from "../contexts/CurrencyContext";
 import { useColorScheme } from "../hooks/useColorScheme";
+import { ReceiptSuccessModal } from "../components/ReceiptSuccessModal";
 
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  barcode: string;
-  category: string;
-  stock: number;
-  image?: string;
+// Receipt data interface (previously from printer-expo)
+export interface ReceiptData {
+  saleId?: string;  // Added for Chrome extension to fetch full sale data
+  storeName?: string;
+  businessName?: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  businessEmail?: string;
+  cashier?: string;
+  items: Array<{
+    name: string;
+    quantity: number;
+    price: number;
+    total: number;
+    sku?: string;
+  }>;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
+  customerPayment: number;
+  change: number;
+  changeAmount?: number;
+  receivedAmount?: number;
+  paymentMethod: string;
+  date: string;
+  time: string;
+  receiptNumber: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  loyaltyPoints?: number;
+  loyaltyPointsFromChange?: number;
+  changeToPoints?: number;
+  qrCode?: string;
+  footerMessage?: string;
+  barcode?: string;
 }
 
 interface CartItem extends Product {
   quantity: number;
 }
 
-interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  email?: string;
-}
-
-// Mock products data - in real app, this would come from your database
-const MOCK_PRODUCTS: Product[] = [
-  { id: "1", name: "iPhone 15 Pro", price: 999.99, barcode: "735745809198", category: "Electronics", stock: 25 },
-  { id: "2", name: "MacBook Air M2", price: 1299.99, barcode: "987654321", category: "Electronics", stock: 15 },
-  { id: "3", name: "AirPods Pro", price: 249.99, barcode: "456789123", category: "Electronics", stock: 50 },
-  { id: "4", name: "iPad Pro 11", price: 799.99, barcode: "789123456", category: "Electronics", stock: 20 },
-  { id: "5", name: "Apple Watch Series 9", price: 399.99, barcode: "321654987", category: "Electronics", stock: 30 },
-  { id: "6", name: "Samsung Galaxy S24", price: 899.99, barcode: "654321789", category: "Electronics", stock: 18 },
-  { id: "7", name: "Sony WH-1000XM5", price: 379.99, barcode: "147258369", category: "Audio", stock: 22 },
-  { id: "8", name: "Dell XPS 13", price: 1199.99, barcode: "369258147", category: "Electronics", stock: 10 },
-  { id: "9", name: "Google Pixel 8 Pro", price: 999.99, barcode: "258147369", category: "Electronics", stock: 12 },
-  { id: "10", name: "Nintendo Switch", price: 299.99, barcode: "963852741", category: "Gaming", stock: 35 },
-];
-
-// Mock customers data
-const MOCK_CUSTOMERS: Customer[] = [
-  { id: "1", name: "Walk-in Customer", phone: "N/A" },
-  { id: "2", name: "John Doe", phone: "+1234567890", email: "john@example.com" },
-  { id: "3", name: "Jane Smith", phone: "+0987654321", email: "jane@example.com" },
-  { id: "4", name: "Robert Johnson", phone: "+1122334455" },
-  { id: "5", name: "Maria Garcia", phone: "+5544332211", email: "maria@example.com" },
-];
+// Default walk-in customer
+const WALK_IN_CUSTOMER: Customer = {
+  id: 'walk-in',
+  name: 'Walk-in Customer',
+  phone: 'N/A',
+  email: null,
+  address: null,
+  notes: null,
+  total_purchases: 0,
+  total_spent: 0,
+  loyalty_points: 0,
+  loyalty_enabled: false,
+  email_updates: false,
+  sms_notifications: false,
+  status: 'active',
+  user_id: '',
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
 
 export default function Sell() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { showToast } = useToast();
+  const { currency, formatAmount } = useCurrency();
+  
+  // Context hooks
+  const { products, fetchProducts } = useProducts();
+  const { recordBatchStockMovement } = useInventory();
+  const { customers, fetchCustomers, getPointsToEarn, addLoyaltyPointsFromSale } = useCustomers();
   
   const [showScanner, setShowScanner] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"cash" | "card" | "mobile">("cash");
   const [showProductList, setShowProductList] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer>(MOCK_CUSTOMERS[0]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer>(WALK_IN_CUSTOMER);
   const [showCustomerList, setShowCustomerList] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [receivedAmount, setReceivedAmount] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [lastReceiptData, setLastReceiptData] = useState<ReceiptData | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [convertChangeToPoints, setConvertChangeToPoints] = useState(false);
+  const [changeAmount, setChangeAmount] = useState(0);
+
+  useEffect(() => {
+    fetchProducts();
+    fetchCustomers();
+  }, []);
 
   // Filter products based on search query
-  const filteredProducts = MOCK_PRODUCTS.filter(product =>
+  const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.barcode.includes(searchQuery) ||
-    product.category.toLowerCase().includes(searchQuery.toLowerCase())
+    product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (product.barcode && product.barcode.includes(searchQuery)) ||
+    (product.categories?.name && product.categories.name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  // Get all customers including walk-in
+  const allCustomers = [WALK_IN_CUSTOMER, ...customers];
+  
   // Filter customers based on search
-  const filteredCustomers = MOCK_CUSTOMERS.filter(customer =>
+  const filteredCustomers = allCustomers.filter(customer =>
     customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
     customer.phone.includes(customerSearch)
   );
 
   const addToCart = (product: Product) => {
-    // Check if item already in cart
+    // Check stock availability
     const existingItem = cartItems.find(item => item.id === product.id);
+    const currentQuantityInCart = existingItem ? existingItem.quantity : 0;
+    
+    if (currentQuantityInCart >= (product.stock_quantity || 0)) {
+      showToast(`Not enough stock. Only ${product.stock_quantity} available`, "warning");
+      return;
+    }
     
     if (existingItem) {
       // Increase quantity
@@ -110,6 +163,8 @@ export default function Sell() {
       setCartItems([...cartItems, cartItem]);
     }
     
+    showToast(`${product.name} added to cart`, "success");
+    
     // Don't clear search immediately to allow continuous searching
     // Just hide the dropdown temporarily
     setShowProductList(false);
@@ -120,16 +175,18 @@ export default function Sell() {
     }, 100);
   };
 
-  const handleScan = (barcode: string, type: string) => {
-    // Look up product by barcode
-    const product = MOCK_PRODUCTS.find(p => p.barcode === barcode);
+  const handleScan = (barcode: string) => {
+    // Look up product by barcode or SKU
+    const product = products.find(p => p.barcode === barcode || p.sku === barcode);
     
     if (product) {
       addToCart(product);
-      // Product added silently - no alert needed
+      setShowScanner(false);
     } else {
-      // Could show a toast or inline message instead of alert
-      setSearchQuery(barcode); // Show the barcode in search field if not found
+      // Show the barcode in search field if not found
+      setSearchQuery(barcode);
+      setShowScanner(false);
+      showToast("Product not found with this barcode", "warning");
     }
   };
 
@@ -149,6 +206,13 @@ export default function Sell() {
       if (item.id === id) {
         const newQuantity = item.quantity + delta;
         if (newQuantity <= 0) return item;
+        
+        // Check stock availability
+        if (newQuantity > (item.stock_quantity || 0)) {
+          showToast(`Only ${item.stock_quantity} available in stock`, "warning");
+          return item;
+        }
+        
         return { ...item, quantity: newQuantity };
       }
       return item;
@@ -164,21 +228,45 @@ export default function Sell() {
   };
 
   const calculateTax = () => {
-    return calculateSubtotal() * 0.1; // 10% tax
+    return 0; // No tax for now
   };
 
   const calculateTotal = () => {
     return calculateSubtotal() + calculateTax();
   };
 
+
   const calculateLoyaltyPoints = () => {
-    // 1 point for every $10 spent
-    return Math.floor(calculateTotal() / 10);
+    // Calculate 5% of profit as loyalty points
+    // Only for customers with loyalty enabled
+    if (!selectedCustomer || !selectedCustomer.loyalty_enabled || selectedCustomer.id === 'walk-in') {
+      return 0;
+    }
+    
+    // Calculate total cost of items in cart
+    const totalCost = cartItems.reduce((sum, item) => {
+      // Use actual cost_price, or default to 80% of selling price (20% profit margin)
+      const costPrice = item.cost_price || item.price * 0.8;
+      console.log(`Item: ${item.name}, Price: $${item.price}, Cost: $${costPrice}, Qty: ${item.quantity}`);
+      return sum + (costPrice * item.quantity);
+    }, 0);
+    
+    // Use subtotal (before tax) for profit calculation
+    const saleSubtotal = calculateSubtotal();
+    const profit = saleSubtotal - totalCost;
+    
+    // 5% of profit as loyalty points (1 point = 1 cent)
+    // profit * 0.05 gives dollars, multiply by 100 for cents
+    const points = Math.max(0, Math.floor(profit * 0.05 * 100));
+    
+    console.log(`Subtotal: $${saleSubtotal}, Total Cost: $${totalCost}, Profit: $${profit}, Points: ${points}`);
+    
+    return points;
   };
 
   const handleCheckout = () => {
     if (cartItems.length === 0) {
-      Alert.alert("Empty Cart", "Please add items to cart before checkout");
+      showToast("Please add items to cart before checkout", "warning");
       return;
     }
     setShowPaymentModal(true);
@@ -191,21 +279,166 @@ export default function Sell() {
     return Math.max(0, received - total);
   };
 
-  const completeSale = () => {
+  const completeSale = async () => {
     const received = parseFloat(receivedAmount) || 0;
     const total = calculateTotal();
     
     if (received < total) {
-      Alert.alert("Insufficient Amount", "Received amount is less than total");
+      showToast("Received amount is less than total", "error");
       return;
     }
     
-    Alert.alert("Success", `Sale completed!\nChange: $${calculateChange().toFixed(2)}`);
-    setShowPaymentModal(false);
-    setCartItems([]);
-    setSearchQuery("");
-    setReceivedAmount("");
-    setSelectedCustomer(MOCK_CUSTOMERS[0]);
+    setIsProcessing(true);
+    
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Calculate actual change and points if converting
+      const actualChange = calculateChange();
+      const pointsFromChange = convertChangeToPoints && selectedCustomer.id !== 'walk-in' 
+        ? Math.floor(actualChange * 100) // 100 points = ৳1
+        : 0;
+      const cashChange = convertChangeToPoints && selectedCustomer.id !== 'walk-in'
+        ? 0  // No cash change if converting to points
+        : actualChange;
+      
+      // Create sale record
+      const saleData: any = {
+        customer_name: selectedCustomer.name,
+        customer_phone: selectedCustomer.phone,
+        customer_email: selectedCustomer.email,
+        subtotal: calculateSubtotal(),
+        tax: calculateTax(),
+        total: calculateTotal(),
+        payment_method: selectedPaymentMethod,
+        received_amount: received,
+        change_amount: cashChange, // Cash change (0 if converted to points)
+        change_to_points: pointsFromChange, // Points from change conversion
+        user_id: user.id,
+        created_at: new Date().toISOString()
+      };
+      
+      // Add customer_id if it's not a walk-in customer
+      if (selectedCustomer.id !== 'walk-in') {
+        saleData.customer_id = selectedCustomer.id;
+      }
+      
+      const { data: sale, error: saleError } = await supabase
+        .from('sales')
+        .insert(saleData)
+        .select()
+        .single();
+
+      if (saleError) throw saleError;
+
+      // Create stock batch for the sale (like stock out batch)
+      const stockItems = cartItems.map(item => ({
+        product_id: item.id,
+        type: 'out' as const,
+        quantity: item.quantity,
+        notes: `Sold ${item.quantity} units at ${formatAmount(item.price)} each`
+      }));
+
+      const batchId = await recordBatchStockMovement(
+        stockItems,
+        {
+          type: 'out',
+          reference: `SALE-${sale.id}`,
+          supplier: selectedCustomer.name,
+          notes: `Sale to ${selectedCustomer.name} - ${cartItems.length} items`
+        }
+      );
+
+      if (!batchId) {
+        console.error('Failed to create stock batch for sale');
+      }
+
+      // Create sale item records
+      for (const item of cartItems) {
+        await supabase
+          .from('sale_items')
+          .insert({
+            sale_id: sale.id,
+            product_id: item.id,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.price * item.quantity
+          });
+      }
+
+      // Add loyalty points if applicable
+      const pointsEarned = calculateLoyaltyPoints();
+      const totalPointsToAdd = pointsEarned + pointsFromChange; // Include change conversion points
+      
+      if (totalPointsToAdd > 0 && selectedCustomer.id !== 'walk-in') {
+        await addLoyaltyPointsFromSale(selectedCustomer.id, sale.id, totalPointsToAdd);
+      }
+      
+      // Refresh products and customers to get updated data
+      await fetchProducts();
+      await fetchCustomers();
+      
+      // Prepare receipt data
+      const receiptData: ReceiptData = {
+        saleId: sale.id,
+        businessName: "My POS Store",
+        businessAddress: "123 Main Street, City",
+        businessPhone: "+1 234 567 8900",
+        businessEmail: "store@mypos.com",
+        receiptNumber: `RCP-${sale.id.substring(0, 8).toUpperCase()}`,
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        cashier: user.email?.split('@')[0] || 'Staff',
+        customerName: selectedCustomer.name,
+        customerPhone: selectedCustomer.phone,
+        customerEmail: selectedCustomer.email || undefined,
+        loyaltyPoints: totalPointsToAdd > 0 ? totalPointsToAdd : undefined,
+        changeToPoints: pointsFromChange > 0 ? pointsFromChange : undefined,
+        items: cartItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.price * item.quantity,
+          sku: item.sku
+        })),
+        subtotal: calculateSubtotal(),
+        tax: calculateTax(),
+        discount: 0, // No discount feature implemented yet
+        total: calculateTotal(),
+        customerPayment: received,
+        change: cashChange,
+        paymentMethod: selectedPaymentMethod.charAt(0).toUpperCase() + selectedPaymentMethod.slice(1),
+        receivedAmount: received,
+        changeAmount: cashChange,
+        footerMessage: "30-day return policy with receipt",
+        barcode: sale.id.substring(0, 12).toUpperCase()
+      };
+      
+      // Store receipt data for reprinting
+      setLastReceiptData(receiptData);
+      
+      // Hide payment modal and show success modal
+      setShowPaymentModal(false);
+      setShowSuccessModal(true);
+      
+      // Reset cart and form
+      setCartItems([]);
+      setSearchQuery("");
+      setReceivedAmount("");
+      setSelectedCustomer(WALK_IN_CUSTOMER);
+      setConvertChangeToPoints(false);
+      
+    } catch (error: any) {
+      console.error('Error completing sale:', error);
+      showToast(error.message || "Failed to complete sale", "error");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -216,12 +449,14 @@ export default function Sell() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Sell Product</Text>
-        <TouchableOpacity style={styles.cartInfoButton}>
-          <Ionicons name="receipt-outline" size={22} color={colors.text} />
-          <View style={styles.cartBadge}>
-            <Text style={styles.cartBadgeText}>{cartItems.length}</Text>
-          </View>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.cartInfoButton}>
+            <Ionicons name="receipt-outline" size={22} color={colors.text} />
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeText}>{cartItems.length}</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -269,7 +504,12 @@ export default function Sell() {
                     >
                       <View style={styles.customerItemInfo}>
                         <Text style={styles.customerItemName}>{customer.name}</Text>
-                        <Text style={styles.customerItemPhone}>{customer.phone}</Text>
+                        <View style={styles.customerItemDetails}>
+                          <Text style={styles.customerItemPhone}>{customer.phone}</Text>
+                          {customer.loyalty_enabled && customer.id !== 'walk-in' && (
+                            <Text style={styles.customerItemPoints}>• {customer.loyalty_points} pts</Text>
+                          )}
+                        </View>
                       </View>
                       {selectedCustomer.id === customer.id && (
                         <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
@@ -318,7 +558,7 @@ export default function Sell() {
                             {product.name}
                           </Text>
                           <Text style={styles.productDropdownDetails}>
-                            {product.category} • ${product.price}
+                            {product.categories?.name || 'Uncategorized'} • {formatAmount(product.price)} • Stock: {product.stock_quantity || 0}
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -361,7 +601,7 @@ export default function Sell() {
                     <Text style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">
                       {item.name}
                     </Text>
-                    <Text style={styles.itemBarcode}>{item.barcode}</Text>
+                    <Text style={styles.itemBarcode}>SKU: {item.sku}</Text>
                   </View>
                   
                   <View style={styles.quantityControl}>
@@ -381,7 +621,7 @@ export default function Sell() {
                   </View>
 
                   <View style={styles.itemPriceSection}>
-                    <Text style={styles.itemPrice}>${(item.price * item.quantity).toFixed(2)}</Text>
+                    <Text style={styles.itemPrice}>{formatAmount(item.price * item.quantity)}</Text>
                     <TouchableOpacity 
                       style={styles.deleteButton}
                       onPress={() => removeItem(item.id)}
@@ -400,24 +640,26 @@ export default function Sell() {
           <View style={styles.summarySection}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>${calculateSubtotal().toFixed(2)}</Text>
+              <Text style={styles.summaryValue}>{formatAmount(calculateSubtotal())}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Tax (10%)</Text>
-              <Text style={styles.summaryValue}>${calculateTax().toFixed(2)}</Text>
+              <Text style={styles.summaryLabel}>Tax</Text>
+              <Text style={styles.summaryValue}>{formatAmount(calculateTax())}</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.summaryRow}>
               <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>${calculateTotal().toFixed(2)}</Text>
+              <Text style={styles.totalValue}>{formatAmount(calculateTotal())}</Text>
             </View>
-            <View style={styles.loyaltyRow}>
-              <View style={styles.loyaltyInfo}>
-                <Ionicons name="star" size={16} color={colors.warning} />
-                <Text style={styles.loyaltyLabel}>Points Earned</Text>
+            {selectedCustomer.loyalty_enabled && selectedCustomer.id !== 'walk-in' && (
+              <View style={styles.summaryLoyaltyRow}>
+                <View style={styles.loyaltyInfo}>
+                  <Ionicons name="star" size={16} color={colors.warning} />
+                  <Text style={styles.loyaltyLabel}>Points Earned</Text>
+                </View>
+                <Text style={styles.loyaltyPoints}>+{calculateLoyaltyPoints()} pts</Text>
               </View>
-              <Text style={styles.loyaltyPoints}>+{calculateLoyaltyPoints()} pts</Text>
-            </View>
+            )}
           </View>
         )}
 
@@ -429,7 +671,7 @@ export default function Sell() {
         <View style={styles.checkoutContainer}>
           <TouchableOpacity style={styles.checkoutButton} onPress={handleCheckout}>
             <Text style={styles.checkoutButtonText}>
-              Checkout • ${calculateTotal().toFixed(2)}
+              Checkout • {formatAmount(calculateTotal())}
             </Text>
             <Ionicons name="arrow-forward" size={20} color="white" />
           </TouchableOpacity>
@@ -454,9 +696,15 @@ export default function Sell() {
       >
         <KeyboardAvoidingView 
           style={styles.modalOverlay} 
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         >
-          <View style={styles.paymentModal}>
+          <ScrollView 
+            contentContainerStyle={styles.paymentModalScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.paymentModal}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Payment</Text>
@@ -478,15 +726,15 @@ export default function Sell() {
             <View style={styles.paymentSummary}>
               <View style={styles.paymentRow}>
                 <Text style={styles.paymentLabel}>Subtotal</Text>
-                <Text style={styles.paymentValue}>${calculateSubtotal().toFixed(2)}</Text>
+                <Text style={styles.paymentValue}>{formatAmount(calculateSubtotal())}</Text>
               </View>
               <View style={styles.paymentRow}>
                 <Text style={styles.paymentLabel}>Tax (10%)</Text>
-                <Text style={styles.paymentValue}>${calculateTax().toFixed(2)}</Text>
+                <Text style={styles.paymentValue}>{formatAmount(calculateTax())}</Text>
               </View>
               <View style={[styles.paymentRow, styles.paymentTotalRow]}>
                 <Text style={styles.paymentTotalLabel}>Total Amount</Text>
-                <Text style={styles.paymentTotalValue}>${calculateTotal().toFixed(2)}</Text>
+                <Text style={styles.paymentTotalValue}>{formatAmount(calculateTotal())}</Text>
               </View>
               <View style={styles.paymentRow}>
                 <Text style={styles.paymentLabel}>Loyalty Points</Text>
@@ -525,7 +773,7 @@ export default function Sell() {
             <View style={styles.receivedAmountSection}>
               <Text style={styles.paymentSectionTitle}>Received Amount</Text>
               <View style={styles.receivedAmountInput}>
-                <Text style={styles.currencySymbol}>$</Text>
+                <Text style={styles.currencySymbol}>{currency.symbol}</Text>
                 <TextInput
                   style={styles.amountInput}
                   value={receivedAmount}
@@ -538,23 +786,30 @@ export default function Sell() {
               
               {/* Quick Amount Buttons */}
               <View style={styles.quickAmounts}>
-                {[calculateTotal(), 50, 100, 200, 500, 1000].map((amount) => (
-                  <TouchableOpacity
-                    key={amount}
-                    style={[
-                      styles.quickAmountButton,
-                      amount === calculateTotal() && styles.exactAmountButton
-                    ]}
-                    onPress={() => setReceivedAmount(amount.toFixed(2))}
-                  >
-                    <Text style={[
-                      styles.quickAmountText,
-                      amount === calculateTotal() && styles.exactAmountText
-                    ]}>
-                      {amount === calculateTotal() ? "Exact" : `$${amount}`}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {(() => {
+                  const total = calculateTotal();
+                  const amounts = [50, 100, 200, 500, 1000];
+                  // Only add total if it's not already in the amounts array
+                  const uniqueAmounts = amounts.includes(total) ? amounts : [total, ...amounts];
+                  
+                  return uniqueAmounts.map((amount, index) => (
+                    <TouchableOpacity
+                      key={`amount-${index}-${amount}`}
+                      style={[
+                        styles.quickAmountButton,
+                        amount === total && styles.exactAmountButton
+                      ]}
+                      onPress={() => setReceivedAmount(amount.toFixed(2))}
+                    >
+                      <Text style={[
+                        styles.quickAmountText,
+                        amount === total && styles.exactAmountText
+                      ]}>
+                        {amount === total ? "Exact" : formatAmount(amount)}
+                      </Text>
+                    </TouchableOpacity>
+                  ));
+                })()}
               </View>
             </View>
 
@@ -562,9 +817,32 @@ export default function Sell() {
             {parseFloat(receivedAmount) > 0 && (
               <View style={styles.changeSection}>
                 <View style={styles.changeDisplay}>
-                  <Text style={styles.changeLabel}>Change to Return</Text>
-                  <Text style={styles.changeAmount}>${calculateChange().toFixed(2)}</Text>
+                  <Text style={styles.paymentChangeLabel}>Change to Return</Text>
+                  <Text style={styles.paymentChangeAmount}>{formatAmount(calculateChange())}</Text>
                 </View>
+                
+                {/* Convert Change to Points Option */}
+                {calculateChange() > 0 && selectedCustomer.id !== 'walk-in' && (
+                  <TouchableOpacity 
+                    style={styles.changeToPointsOption}
+                    onPress={() => setConvertChangeToPoints(!convertChangeToPoints)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.changeToPointsCheckbox}>
+                      {convertChangeToPoints && (
+                        <Ionicons name="checkmark" size={16} color={colors.primary} />
+                      )}
+                    </View>
+                    <View style={styles.changeToPointsInfo}>
+                      <Text style={styles.changeToPointsText}>
+                        Convert change to loyalty points
+                      </Text>
+                      <Text style={styles.changeToPointsValue}>
+                        {Math.floor(calculateChange() * 100)} points (৳1 = 100 points)
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -577,15 +855,28 @@ export default function Sell() {
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.completeButton}
+                style={[styles.completeButton, isProcessing && { opacity: 0.6 }]}
                 onPress={completeSale}
+                disabled={isProcessing}
               >
-                <Text style={styles.completeButtonText}>Complete Sale</Text>
+                <Text style={styles.completeButtonText}>
+                  {isProcessing ? "Processing..." : "Complete Sale"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Success Modal with Print Options */}
+      <ReceiptSuccessModal
+        visible={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        receiptData={lastReceiptData}
+        showNewSaleButton={true}
+        onNewSale={() => setShowSuccessModal(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -616,6 +907,19 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: colors.text,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  printIconButton: {
+    width: 36,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: 18,
   },
   cartInfoButton: {
     width: 40,
@@ -726,6 +1030,16 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   customerItemPhone: {
     fontSize: 11,
     color: colors.textSecondary,
+  },
+  customerItemDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  customerItemPoints: {
+    fontSize: 11,
+    color: colors.warning,
+    fontWeight: "500",
   },
   searchWrapper: {
     position: "relative",
@@ -941,7 +1255,7 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     fontWeight: "600",
     color: colors.text,
   },
-  loyaltyRow: {
+  summaryLoyaltyRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -995,12 +1309,16 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "flex-end",
   },
+  paymentModalScroll: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+  },
   paymentModal: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingBottom: Platform.OS === "ios" ? 34 : 20,
-    maxHeight: "90%",
+    maxHeight: Platform.OS === "android" ? "85%" : "90%",
   },
   modalHeader: {
     flexDirection: "row",
@@ -1166,6 +1484,40 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   exactAmountText: {
     color: colors.primary,
   },
+  changeToPointsOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  changeToPointsCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    marginRight: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+  },
+  changeToPointsInfo: {
+    flex: 1,
+  },
+  changeToPointsText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: colors.text,
+    marginBottom: 2,
+  },
+  changeToPointsValue: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
   changeSection: {
     paddingHorizontal: 20,
     marginBottom: 20,
@@ -1180,11 +1532,11 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  changeLabel: {
+  paymentChangeLabel: {
     fontSize: 14,
     color: colors.textSecondary,
   },
-  changeAmount: {
+  paymentChangeAmount: {
     fontSize: 20,
     fontWeight: "600",
     color: colors.success,

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Alert,
   Keyboard,
@@ -13,20 +13,16 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import BarcodeScanner from "../components/BarcodeScanner";
 import { SearchBarWithScanner } from "../components/SearchBarWithScanner";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
-
-interface Product {
-  id: string;
-  name: string;
-  sku: string;
-  currentStock: number;
-  price: number;
-  image?: string;
-}
+import { useToast } from "../contexts/ToastContext";
+import { useCurrency } from "../contexts/CurrencyContext";
+import { useProducts, Product } from "../contexts/ProductContext";
+import { useInventory } from "../contexts/InventoryContext";
 
 interface StockOutEntry {
   productId: string;
@@ -48,6 +44,12 @@ export default function StockOut() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { showToast } = useToast();
+  const { formatAmount } = useCurrency();
+
+  // Context hooks
+  const { products, fetchProducts } = useProducts();
+  const { recordBatchStockMovement } = useInventory();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -57,34 +59,39 @@ export default function StockOut() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [reason, setReason] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [saleType, setSaleType] = useState<"retail" | "wholesale">("retail");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Mock product data - replace with actual data from your backend
-  const mockProducts: Product[] = [
-    { id: "1", name: "iPhone 14 Pro", sku: "IPH14P", currentStock: 45, price: 999 },
-    { id: "2", name: "MacBook Air M2", sku: "MBA-M2", currentStock: 23, price: 1299 },
-    { id: "3", name: "AirPods Pro", sku: "APP-2", currentStock: 67, price: 249 },
-    { id: "4", name: "iPad Pro 11", sku: "IPD11", currentStock: 12, price: 799 },
-    { id: "5", name: "Apple Watch S9", sku: "AWS9", currentStock: 34, price: 399 },
-  ];
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
-  const filteredProducts = mockProducts.filter(
+  const filteredProducts = products.filter(
     (product) =>
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase())
+      product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (product.barcode && product.barcode.includes(searchQuery))
   );
 
   const handleAddToCart = () => {
     if (!selectedProduct || !quantity) {
-      Alert.alert("Missing Information", "Please select a product and enter quantity");
+      showToast("Please select a product and enter quantity", "warning");
       return;
     }
 
     const qty = parseInt(quantity);
-    if (qty > selectedProduct.currentStock) {
-      Alert.alert("Insufficient Stock", `Only ${selectedProduct.currentStock} units available`);
+    const currentStock = selectedProduct.stock_quantity || 0;
+
+    if (qty > currentStock) {
+      showToast(`Only ${currentStock} units available`, "error");
+      return;
+    }
+
+    if (qty <= 0) {
+      showToast("Please enter a valid quantity", "warning");
       return;
     }
 
@@ -97,6 +104,7 @@ export default function StockOut() {
     };
 
     setStockOutEntries([...stockOutEntries, newEntry]);
+    showToast(`Added ${qty} units of ${selectedProduct.name}`, "success");
     
     // Reset form
     setSelectedProduct(null);
@@ -107,7 +115,9 @@ export default function StockOut() {
   };
 
   const handleRemoveEntry = (index: number) => {
+    const entry = stockOutEntries[index];
     setStockOutEntries(stockOutEntries.filter((_, i) => i !== index));
+    showToast(`Removed ${entry.productName}`, "info");
   };
 
   const calculateSubtotal = () => {
@@ -125,23 +135,65 @@ export default function StockOut() {
     }, 0);
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (stockOutEntries.length === 0) {
-      Alert.alert("Empty Cart", "Please add at least one item to checkout");
+      showToast("Please add at least one item to stock out", "warning");
+      return;
+    }
+
+    if (!reason.trim()) {
+      showToast("Please provide a reason for stock out", "warning");
       return;
     }
 
     Alert.alert(
-      "Confirm Sale",
-      `Total Amount: $${calculateSubtotal().toFixed(2)}\nItems: ${stockOutEntries.length}`,
+      "Confirm Stock Out",
+      `You are about to remove ${stockOutEntries.length} item(s) worth ${formatAmount(calculateSubtotal())}`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Confirm",
-          onPress: () => {
-            // Handle checkout
-            Alert.alert("Success", "Sale completed successfully");
-            router.back();
+          onPress: async () => {
+            setIsSubmitting(true);
+            try {
+              // Prepare items for batch processing
+              const items = stockOutEntries.map(entry => ({
+                product_id: entry.productId,
+                type: 'out' as const,
+                quantity: entry.quantity,
+                notes: `Stock out: ${entry.quantity} units at ${formatAmount(entry.price)} each${entry.discount ? ` with ${entry.discount}% discount` : ''}`,
+              }));
+
+              // Create batch with all items (similar to sales)
+              const batchId = await recordBatchStockMovement(
+                items,
+                {
+                  type: 'out',
+                  reference: customerPhone || undefined,
+                  supplier: customerName || reason,
+                  notes: notes || `Stock out batch: ${stockOutEntries.length} items - ${reason}`,
+                }
+              );
+
+              if (!batchId) {
+                throw new Error('Failed to create stock out batch');
+              }
+
+              showToast(`Successfully removed stock for ${stockOutEntries.length} products`, "success");
+              
+              // Reset form and navigate back
+              setStockOutEntries([]);
+              setCustomerName("");
+              setCustomerPhone("");
+              setNotes("");
+              setReason("");
+              router.back();
+            } catch (error: any) {
+              console.error('Error submitting stock out:', error);
+              showToast(error.message || "Failed to submit stock out", "error");
+            } finally {
+              setIsSubmitting(false);
+            }
           },
         },
       ]
@@ -156,16 +208,21 @@ export default function StockOut() {
   };
 
   const handleBarcodeScan = (data: string) => {
-    if (showScanner === false) return;
+    setShowScanner(false);
+    setSearchQuery(data);
     
-    const product = mockProducts.find(p => p.sku === data);
+    // Try to find product by barcode or SKU
+    const product = products.find(p => p.barcode === data || p.sku === data);
     
     if (product) {
       setSelectedProduct(product);
       setSearchQuery(product.name);
+      setIsFocused(false);
     } else {
+      // If not found, put the barcode in search field
       setSearchQuery(data);
-      setIsFocused(true);
+      setIsFocused(true); // Open search dropdown
+      showToast("Product not found with this barcode", "warning");
     }
   };
 
@@ -266,18 +323,18 @@ export default function StockOut() {
                                 {product.name}
                               </Text>
                               <Text style={styles.productDropdownDetails}>
-                                SKU: {product.sku} • ${product.price}
+                                SKU: {product.sku} • {formatAmount(product.price)}
                               </Text>
                             </View>
                             <View style={[
                               styles.stockBadge,
-                              product.currentStock < 10 && styles.stockBadgeLow
+                              (product.stock_quantity || 0) < 10 && styles.stockBadgeLow
                             ]}>
                               <Text style={[
                                 styles.stockBadgeText,
-                                product.currentStock < 10 && styles.stockBadgeTextLow
+                                (product.stock_quantity || 0) < 10 && styles.stockBadgeTextLow
                               ]}>
-                                {product.currentStock} left
+                                {product.stock_quantity || 0} left
                               </Text>
                             </View>
                           </TouchableOpacity>
@@ -299,14 +356,14 @@ export default function StockOut() {
                     <Text style={styles.infoLabel}>Available Stock:</Text>
                     <Text style={[
                       styles.infoValue,
-                      selectedProduct.currentStock < 10 && styles.lowStockText
+                      (selectedProduct.stock_quantity || 0) < 10 && styles.lowStockText
                     ]}>
-                      {selectedProduct.currentStock} units
+                      {selectedProduct.stock_quantity || 0} units
                     </Text>
                   </View>
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Unit Price:</Text>
-                    <Text style={styles.infoValue}>${selectedProduct.price}</Text>
+                    <Text style={styles.infoValue}>{formatAmount(selectedProduct.price)}</Text>
                   </View>
                 </View>
               )}
@@ -363,7 +420,7 @@ export default function StockOut() {
                       <Text style={styles.cartItemName}>{entry.productName}</Text>
                       <View style={styles.cartItemDetails}>
                         <Text style={styles.cartItemText}>
-                          {entry.quantity} × ${entry.price}
+                          {entry.quantity} × {formatAmount(entry.price)}
                         </Text>
                         {entry.discount > 0 && (
                           <View style={styles.discountBadge}>
@@ -374,7 +431,7 @@ export default function StockOut() {
                     </View>
                     <View style={styles.cartItemRight}>
                       <Text style={styles.cartItemTotal}>
-                        ${((entry.quantity * entry.price) * (1 - entry.discount/100)).toFixed(2)}
+                        {formatAmount((entry.quantity * entry.price) * (1 - entry.discount/100))}
                       </Text>
                       <TouchableOpacity
                         style={styles.removeButton}
@@ -391,31 +448,42 @@ export default function StockOut() {
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Subtotal:</Text>
                     <Text style={styles.summaryValue}>
-                      ${(calculateSubtotal() + calculateTotalDiscount()).toFixed(2)}
+                      {formatAmount(calculateSubtotal() + calculateTotalDiscount())}
                     </Text>
                   </View>
                   {calculateTotalDiscount() > 0 && (
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Discount:</Text>
                       <Text style={styles.discountValue}>
-                        -${calculateTotalDiscount().toFixed(2)}
+                        -{formatAmount(calculateTotalDiscount())}
                       </Text>
                     </View>
                   )}
                   <View style={[styles.summaryRow, styles.totalRow]}>
                     <Text style={styles.totalLabel}>Total:</Text>
-                    <Text style={styles.totalValue}>${calculateSubtotal().toFixed(2)}</Text>
+                    <Text style={styles.totalValue}>{formatAmount(calculateSubtotal())}</Text>
                   </View>
                 </View>
               </View>
             )}
 
-            {/* Customer Information */}
+            {/* Stock Out Information */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Customer Information</Text>
+              <Text style={styles.sectionTitle}>Stock Out Information</Text>
               
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Customer Name</Text>
+                <Text style={styles.inputLabel}>Reason for Stock Out *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Damaged, Expired, Internal Use, etc."
+                  value={reason}
+                  onChangeText={setReason}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Customer Name (Optional)</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Walk-in Customer"
@@ -426,7 +494,7 @@ export default function StockOut() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Phone Number</Text>
+                <Text style={styles.inputLabel}>Phone Number (Optional)</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Enter phone number"
@@ -441,7 +509,7 @@ export default function StockOut() {
                 <Text style={styles.inputLabel}>Notes</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
-                  placeholder="Add sale notes..."
+                  placeholder="Add any additional notes..."
                   value={notes}
                   onChangeText={setNotes}
                   multiline
@@ -461,15 +529,23 @@ export default function StockOut() {
             <View style={styles.footerContent}>
               <View>
                 <Text style={styles.footerLabel}>Total Amount</Text>
-                <Text style={styles.footerAmount}>${calculateSubtotal().toFixed(2)}</Text>
+                <Text style={styles.footerAmount}>{formatAmount(calculateSubtotal())}</Text>
               </View>
               <TouchableOpacity
-                style={[styles.checkoutButton, stockOutEntries.length === 0 && styles.checkoutButtonDisabled]}
+                style={[styles.checkoutButton, (stockOutEntries.length === 0 || isSubmitting) && styles.checkoutButtonDisabled]}
                 onPress={handleCheckout}
-                disabled={stockOutEntries.length === 0}
+                disabled={stockOutEntries.length === 0 || isSubmitting}
               >
-                <Ionicons name="checkmark-circle-outline" size={20} color={colors.surface} />
-                <Text style={styles.checkoutButtonText}>Checkout</Text>
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color={colors.surface} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={18} color={colors.surface} />
+                    <Text style={styles.checkoutButtonText}>
+                      Confirm ({stockOutEntries.length})
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -808,14 +884,16 @@ const createStyles = (colors: typeof Colors.light) =>
     cartHeader: {
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "space-between",
       marginBottom: 16,
     },
     cartBadge: {
-      marginLeft: 8,
       backgroundColor: colors.primary,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+      minWidth: 24,
+      alignItems: "center",
     },
     cartBadgeText: {
       fontSize: 12,
@@ -952,14 +1030,14 @@ const createStyles = (colors: typeof Colors.light) =>
       backgroundColor: colors.primary,
       borderRadius: 12,
       paddingVertical: 14,
-      paddingHorizontal: 24,
-      gap: 8,
+      paddingHorizontal: 20,
+      gap: 6,
     },
     checkoutButtonDisabled: {
       backgroundColor: colors.border,
     },
     checkoutButtonText: {
-      fontSize: 16,
+      fontSize: 14,
       fontWeight: "600",
       color: colors.surface,
     },

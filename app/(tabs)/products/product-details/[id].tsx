@@ -1,45 +1,24 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TouchableOpacity,
-  Image,
-  Platform,
-  Modal,
-  TextInput,
-  Alert,
-} from "react-native";
+import { Colors } from "@/constants/Colors";
+import { useProducts, Product, StockHistory } from "@/contexts/ProductContext";
+import { useToast } from "@/contexts/ToastContext";
+import { useCurrency } from "@/contexts/CurrencyContext";
+import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import { Colors } from "../../constants/Colors";
-import { useColorScheme } from "../../hooks/useColorScheme";
-
-// Mock product data - replace with actual data fetching
-const MOCK_PRODUCT = {
-  id: "1",
-  name: "iPhone 15 Pro Max",
-  sku: "IPH-15PM-256",
-  barcode: "1234567890123",
-  price: 1199.99,
-  cost: 899.99,
-  stock: 45,
-  minStock: 10,
-  category: "Smartphones",
-  description: "The iPhone 15 Pro Max features a strong and light titanium design with a 6.7-inch Super Retina XDR display. It's powered by the A17 Pro chip for incredible performance.",
-  brand: "Apple",
-  supplier: "Tech Distributors Inc.",
-  lastRestocked: "Mar 15, 2024",
-  image: undefined,
-  stockHistory: [
-    { date: "Mar 15, 2024", type: "in", quantity: 50, note: "Regular restock" },
-    { date: "Mar 14, 2024", type: "out", quantity: 5, note: "Sale to customer" },
-    { date: "Mar 12, 2024", type: "out", quantity: 3, note: "Sale to customer" },
-    { date: "Mar 10, 2024", type: "adjust", quantity: -2, note: "Inventory adjustment" },
-  ]
-};
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function ProductDetails() {
   const router = useRouter();
@@ -47,53 +26,144 @@ export default function ProductDetails() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { showToast } = useToast();
+  const { formatAmount } = useCurrency();
+  
+  const { 
+    fetchProductById, 
+    fetchStockHistory, 
+    deleteProduct, 
+    adjustStock 
+  } = useProducts();
 
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockAdjustType, setStockAdjustType] = useState<"in" | "out" | "adjust">("in");
   const [stockQuantity, setStockQuantity] = useState("");
   const [stockNote, setStockNote] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  const product = MOCK_PRODUCT; // In real app, fetch based on id
+  useEffect(() => {
+    loadProductData();
+  }, [id]);
+
+  const loadProductData = async () => {
+    if (!id || typeof id !== 'string') {
+      showToast("Invalid product ID", "error");
+      router.back();
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      // Fetch product details
+      const productData = await fetchProductById(id);
+      if (productData) {
+        setProduct(productData);
+        
+        // Fetch stock history
+        const history = await fetchStockHistory(id);
+        setStockHistory(history);
+      } else {
+        showToast("Product not found", "error");
+        router.back();
+      }
+    } catch (error) {
+      console.error('Error loading product:', error);
+      showToast("Failed to load product details", "error");
+      router.back();
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const getStockStatus = () => {
-    if (product.stock === 0) return { color: colors.error, text: "Out of Stock" };
-    if (product.stock < product.minStock) return { color: colors.warning, text: "Low Stock" };
+    if (!product) return { color: colors.textMuted, text: "Unknown" };
+    
+    const stock = product.stock_quantity || 0;
+    const minStock = product.min_stock_level || 10;
+    
+    if (stock === 0) return { color: colors.error, text: "Out of Stock" };
+    if (stock < minStock) return { color: colors.warning, text: "Low Stock" };
     return { color: colors.success, text: "In Stock" };
   };
 
-  const stockStatus = getStockStatus();
-  const profit = product.price - product.cost;
-  const profitMargin = ((profit / product.price) * 100).toFixed(1);
+  const handleDelete = async () => {
+    if (!product) return;
+    
+    const success = await deleteProduct(product.id);
+    if (success) {
+      router.back();
+    }
+  };
 
-  const handleDelete = () => {
-    Alert.alert(
-      "Delete Product",
-      "Are you sure you want to delete this product? This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: () => {
-            console.log("Delete product:", id);
-            router.back();
-          }
-        },
-      ]
+  const handleStockAdjust = async () => {
+    if (!product || !stockQuantity || parseInt(stockQuantity) <= 0) {
+      showToast("Please enter a valid quantity", "warning");
+      return;
+    }
+
+    setIsSaving(true);
+    
+    try {
+      const success = await adjustStock(
+        product.id,
+        stockAdjustType,
+        parseInt(stockQuantity),
+        stockNote || undefined
+      );
+
+      if (success) {
+        setShowStockModal(false);
+        setStockQuantity("");
+        setStockNote("");
+        setStockAdjustType("in"); // Reset to default
+        
+        // Reload product data to show updated stock
+        await loadProductData();
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const closeStockModal = () => {
+    if (!isSaving) {
+      setShowStockModal(false);
+      setStockQuantity("");
+      setStockNote("");
+      setStockAdjustType("in");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading product details...</Text>
+        </View>
+      </SafeAreaView>
     );
-  };
+  }
 
-  const handleStockAdjust = () => {
-    console.log("Stock adjustment:", {
-      type: stockAdjustType,
-      quantity: stockQuantity,
-      note: stockNote,
-    });
-    setShowStockModal(false);
-    setStockQuantity("");
-    setStockNote("");
-  };
+  if (!product) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Product not found</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const stockStatus = getStockStatus();
+  const cost = product.cost_price || 0;
+  const profit = product.price - cost;
+  const profitMargin = product.price > 0 ? ((profit / product.price) * 100).toFixed(1) : "0";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -105,7 +175,7 @@ export default function ProductDetails() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Product Details</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerButton} onPress={() => router.push(`/edit-product/${id}`)}>
+            <TouchableOpacity style={styles.headerButton}>
               <Ionicons name="create-outline" size={20} color={colors.text} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerButton} onPress={handleDelete}>
@@ -116,8 +186,8 @@ export default function ProductDetails() {
 
         {/* Product Image */}
         <View style={styles.imageSection}>
-          {product.image ? (
-            <Image source={{ uri: product.image }} style={styles.productImage} />
+          {product.image_url ? (
+            <Image source={{ uri: product.image_url }} style={styles.productImage} />
           ) : (
             <View style={styles.imagePlaceholder}>
               <Ionicons name="cube-outline" size={48} color={colors.textMuted} />
@@ -129,7 +199,10 @@ export default function ProductDetails() {
         {/* Basic Info */}
         <View style={styles.section}>
           <Text style={styles.productName}>{product.name}</Text>
-          <Text style={styles.productCategory}>{product.category} • {product.brand}</Text>
+          <Text style={styles.productCategory}>
+            {product.categories?.name || product.category || 'Uncategorized'}
+            {product.brand ? ` • ${product.brand}` : ''}
+          </Text>
           
           <View style={styles.statusRow}>
             <View style={[styles.statusBadge, { backgroundColor: `${stockStatus.color}15` }]}>
@@ -138,7 +211,7 @@ export default function ProductDetails() {
                 {stockStatus.text}
               </Text>
             </View>
-            <Text style={styles.stockCount}>{product.stock} units available</Text>
+            <Text style={styles.stockCount}>{product.stock_quantity || 0} units available</Text>
           </View>
         </View>
 
@@ -146,7 +219,7 @@ export default function ProductDetails() {
         <View style={styles.metricsContainer}>
           <View style={styles.metricCard}>
             <Ionicons name="pricetag" size={20} color={colors.primary} />
-            <Text style={styles.metricValue}>${product.price.toFixed(2)}</Text>
+            <Text style={styles.metricValue}>{formatAmount(product.price)}</Text>
             <Text style={styles.metricLabel}>Selling Price</Text>
           </View>
           <View style={styles.metricCard}>
@@ -156,7 +229,7 @@ export default function ProductDetails() {
           </View>
           <View style={styles.metricCard}>
             <Ionicons name="cube" size={20} color={colors.warning} />
-            <Text style={styles.metricValue}>{product.stock}</Text>
+            <Text style={styles.metricValue}>{product.stock_quantity || 0}</Text>
             <Text style={styles.metricLabel}>Current Stock</Text>
           </View>
         </View>
@@ -170,10 +243,7 @@ export default function ProductDetails() {
             <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
             <Text style={styles.actionButtonText}>Adjust Stock</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => router.push(`/barcode-print/${id}`)}
-          >
+          <TouchableOpacity style={styles.actionButton}>
             <Ionicons name="barcode-outline" size={20} color={colors.primary} />
             <Text style={styles.actionButtonText}>Print Barcode</Text>
           </TouchableOpacity>
@@ -196,15 +266,17 @@ export default function ProductDetails() {
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Barcode</Text>
-            <Text style={styles.infoValue}>{product.barcode}</Text>
+            <Text style={styles.infoValue}>{product.barcode || 'N/A'}</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Supplier</Text>
-            <Text style={styles.infoValue}>{product.supplier}</Text>
+            <Text style={styles.infoValue}>{product.supplier || 'N/A'}</Text>
           </View>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Last Restocked</Text>
-            <Text style={styles.infoValue}>{product.lastRestocked}</Text>
+            <Text style={styles.infoLabel}>Last Updated</Text>
+            <Text style={styles.infoValue}>
+              {product.updated_at ? new Date(product.updated_at).toLocaleDateString() : 'N/A'}
+            </Text>
           </View>
         </View>
 
@@ -215,17 +287,17 @@ export default function ProductDetails() {
           <View style={styles.pricingCard}>
             <View style={styles.pricingRow}>
               <Text style={styles.pricingLabel}>Cost Price</Text>
-              <Text style={styles.pricingValue}>${product.cost.toFixed(2)}</Text>
+              <Text style={styles.pricingValue}>{formatAmount(product.cost_price || 0)}</Text>
             </View>
             <View style={styles.pricingRow}>
               <Text style={styles.pricingLabel}>Selling Price</Text>
-              <Text style={styles.pricingValue}>${product.price.toFixed(2)}</Text>
+              <Text style={styles.pricingValue}>{formatAmount(product.price)}</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.pricingRow}>
               <Text style={styles.pricingLabel}>Profit per Unit</Text>
               <Text style={[styles.pricingValue, { color: colors.success }]}>
-                ${profit.toFixed(2)}
+                {formatAmount(profit)}
               </Text>
             </View>
           </View>
@@ -244,11 +316,11 @@ export default function ProductDetails() {
             <View style={styles.stockInfoRow}>
               <View style={styles.stockInfoItem}>
                 <Text style={styles.stockInfoLabel}>Current Stock</Text>
-                <Text style={styles.stockInfoValue}>{product.stock} units</Text>
+                <Text style={styles.stockInfoValue}>{product.stock_quantity || 0} units</Text>
               </View>
               <View style={styles.stockInfoItem}>
                 <Text style={styles.stockInfoLabel}>Min Stock Level</Text>
-                <Text style={styles.stockInfoValue}>{product.minStock} units</Text>
+                <Text style={styles.stockInfoValue}>{product.min_stock_level || 0} units</Text>
               </View>
             </View>
             
@@ -256,13 +328,13 @@ export default function ProductDetails() {
               <Ionicons 
                 name="information-circle" 
                 size={16} 
-                color={product.stock < product.minStock ? colors.warning : colors.textSecondary} 
+                color={(product.stock_quantity || 0) < (product.min_stock_level || 10) ? colors.warning : colors.textSecondary} 
               />
               <Text style={[
                 styles.stockWarningText,
-                { color: product.stock < product.minStock ? colors.warning : colors.textSecondary }
+                { color: (product.stock_quantity || 0) < (product.min_stock_level || 10) ? colors.warning : colors.textSecondary }
               ]}>
-                {product.stock < product.minStock 
+                {(product.stock_quantity || 0) < (product.min_stock_level || 10) 
                   ? "Stock is below minimum level" 
                   : "Stock level is healthy"}
               </Text>
@@ -279,53 +351,57 @@ export default function ProductDetails() {
         )}
 
         {/* Stock History */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Stock Activity</Text>
-          
-          {product.stockHistory.map((activity, index) => (
-            <View key={index} style={styles.historyItem}>
-              <View style={[
-                styles.historyIcon,
-                { backgroundColor: 
-                  activity.type === "in" ? `${colors.success}15` :
-                  activity.type === "out" ? `${colors.error}15` :
-                  `${colors.warning}15`
-                }
-              ]}>
-                <Ionicons 
-                  name={
-                    activity.type === "in" ? "arrow-down" :
-                    activity.type === "out" ? "arrow-up" :
-                    "sync"
+        {stockHistory.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recent Stock Activity</Text>
+            
+            {stockHistory.map((activity, index) => (
+              <View key={index} style={styles.historyItem}>
+                <View style={[
+                  styles.historyIcon,
+                  { backgroundColor: 
+                    activity.type === "in" ? `${colors.success}15` :
+                    activity.type === "out" ? `${colors.error}15` :
+                    `${colors.warning}15`
                   }
-                  size={16}
-                  color={
+                ]}>
+                  <Ionicons 
+                    name={
+                      activity.type === "in" ? "arrow-down" :
+                      activity.type === "out" ? "arrow-up" :
+                      "sync"
+                    }
+                    size={16}
+                    color={
+                      activity.type === "in" ? colors.success :
+                      activity.type === "out" ? colors.error :
+                      colors.warning
+                    }
+                  />
+                </View>
+                
+                <View style={styles.historyContent}>
+                  <Text style={styles.historyNote}>{activity.note || 'Stock adjustment'}</Text>
+                  <Text style={styles.historyDate}>
+                    {activity.created_at ? new Date(activity.created_at).toLocaleDateString() : ''}
+                  </Text>
+                </View>
+                
+                <Text style={[
+                  styles.historyQuantity,
+                  { color: 
                     activity.type === "in" ? colors.success :
                     activity.type === "out" ? colors.error :
                     colors.warning
                   }
-                />
+                ]}>
+                  {activity.type === "in" ? "+" : activity.type === "out" ? "-" : ""}
+                  {activity.quantity}
+                </Text>
               </View>
-              
-              <View style={styles.historyContent}>
-                <Text style={styles.historyNote}>{activity.note}</Text>
-                <Text style={styles.historyDate}>{activity.date}</Text>
-              </View>
-              
-              <Text style={[
-                styles.historyQuantity,
-                { color: 
-                  activity.type === "in" ? colors.success :
-                  activity.type === "out" ? colors.error :
-                  colors.warning
-                }
-              ]}>
-                {activity.type === "in" ? "+" : activity.type === "out" ? "-" : ""}
-                {activity.quantity}
-              </Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -335,14 +411,17 @@ export default function ProductDetails() {
         visible={showStockModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowStockModal(false)}
+        onRequestClose={closeStockModal}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isSaving && { opacity: 0.9 }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Adjust Stock</Text>
-              <TouchableOpacity onPress={() => setShowStockModal(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
+              <TouchableOpacity 
+                onPress={closeStockModal}
+                disabled={isSaving}
+              >
+                <Ionicons name="close" size={24} color={isSaving ? colors.textMuted : colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -357,8 +436,10 @@ export default function ProductDetails() {
                   style={[
                     styles.stockTypeButton,
                     stockAdjustType === item.type && styles.stockTypeButtonActive,
+                    isSaving && { opacity: 0.5 }
                   ]}
-                  onPress={() => setStockAdjustType(item.type as any)}
+                  onPress={() => !isSaving && setStockAdjustType(item.type as any)}
+                  disabled={isSaving}
                 >
                   <Ionicons 
                     name={item.icon as any} 
@@ -376,40 +457,54 @@ export default function ProductDetails() {
             </View>
 
             <View style={styles.modalForm}>
-              <Text style={styles.modalLabel}>Quantity</Text>
+              <Text style={styles.modalLabel}>
+                {stockAdjustType === "adjust" ? "New Quantity" : "Quantity"}
+              </Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="Enter quantity"
+                style={[styles.modalInput, isSaving && { opacity: 0.5 }]}
+                placeholder={stockAdjustType === "adjust" ? "Enter new total quantity" : "Enter quantity"}
                 placeholderTextColor={colors.textMuted}
                 value={stockQuantity}
                 onChangeText={setStockQuantity}
                 keyboardType="numeric"
+                editable={!isSaving}
               />
 
               <Text style={styles.modalLabel}>Note (Optional)</Text>
               <TextInput
-                style={[styles.modalInput, styles.modalTextArea]}
+                style={[styles.modalInput, styles.modalTextArea, isSaving && { opacity: 0.5 }]}
                 placeholder="Add a note about this adjustment"
                 placeholderTextColor={colors.textMuted}
                 value={stockNote}
                 onChangeText={setStockNote}
                 multiline
                 numberOfLines={3}
+                editable={!isSaving}
               />
             </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalCancelButton}
-                onPress={() => setShowStockModal(false)}
+                style={[styles.modalCancelButton, isSaving && { opacity: 0.5 }]}
+                onPress={closeStockModal}
+                disabled={isSaving}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.modalSaveButton}
+                style={[
+                  styles.modalSaveButton,
+                  isSaving && styles.modalSaveButtonDisabled,
+                  (!stockQuantity || parseInt(stockQuantity) <= 0) && { opacity: 0.6 }
+                ]}
                 onPress={handleStockAdjust}
+                disabled={isSaving || !stockQuantity || parseInt(stockQuantity) <= 0}
               >
-                <Text style={styles.modalSaveText}>Save Adjustment</Text>
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalSaveText}>Save Adjustment</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -806,5 +901,19 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: "#FFFFFF",
+  },
+  modalSaveButtonDisabled: {
+    backgroundColor: colors.textMuted,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });

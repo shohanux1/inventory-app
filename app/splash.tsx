@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useAuth } from "../contexts/AuthContext";
 
 const { width, height } = Dimensions.get("window");
 
 export default function Splash() {
   const router = useRouter();
+  const { user, isLoading } = useAuth();
 
   // Animation values
   const logoY = useRef(new Animated.Value(-50)).current;
@@ -24,6 +26,9 @@ export default function Splash() {
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
   const dot3 = useRef(new Animated.Value(0)).current;
+
+  // State to track if minimum splash time has passed
+  const [minTimeElapsed, setMinTimeElapsed] = useState(false);
 
   useEffect(() => {
     // Main animation sequence
@@ -114,13 +119,26 @@ export default function Splash() {
 
     setTimeout(animateDots, 1000);
 
-    // Navigate after animations
+    // Set minimum time elapsed after 3 seconds
     const timer = setTimeout(() => {
-      router.replace("/welcome");
-    }, 3500);
+      setMinTimeElapsed(true);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Navigate when both auth is loaded and minimum time has elapsed
+  useEffect(() => {
+    if (!isLoading && minTimeElapsed) {
+      if (user) {
+        // User is logged in, go to dashboard
+        router.replace("/(tabs)/dashboard");
+      } else {
+        // User is not logged in, go to welcome
+        router.replace("/welcome");
+      }
+    }
+  }, [user, isLoading, minTimeElapsed]);
 
   const spin = iconRotate.interpolate({
     inputRange: [0, 1],

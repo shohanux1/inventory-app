@@ -15,16 +15,50 @@ import Input from '../../components/Input';
 import Button from '../../components/Button';
 import SocialButton from '../../components/SocialButton';
 import Checkbox from '../../components/Checkbox';
+import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function SignupScreen() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [agreeToTerms, setAgreeToTerms] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { signUp } = useAuth();
+  const { showToast } = useToast();
 
   const handleSignup = async () => {
-    // Direct navigation for development
-    router.replace('/(tabs)/dashboard');
+    if (!fullName || !email || !password) {
+      showToast('Please fill in all fields', 'warning');
+      return;
+    }
+
+    if (!agreeToTerms) {
+      showToast('Please agree to the terms and conditions', 'warning');
+      return;
+    }
+
+    if (password.length < 6) {
+      showToast('Password must be at least 6 characters', 'warning');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await signUp(email, password, fullName);
+      if (result.success) {
+        if (result.message) {
+          showToast(result.message, 'info');
+        } else {
+          showToast('Account created successfully!', 'success');
+          router.replace('/(tabs)/dashboard');
+        }
+      } else {
+        showToast(result.message || 'Sign up failed', 'error');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -98,8 +132,9 @@ export default function SignupScreen() {
               </View>
 
               <Button
-                title="Create account"
+                title={isLoading ? "Creating account..." : "Create account"}
                 onPress={handleSignup}
+                disabled={isLoading}
               />
 
               <View style={styles.divider}>

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { 
   View, 
   Text, 
@@ -7,12 +7,18 @@ import {
   ScrollView, 
   Switch, 
   SafeAreaView, 
-  Platform 
+  Platform,
+  Modal,
+  TextInput,
+  FlatList
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
 import { useColorScheme } from "../../hooks/useColorScheme";
+import { useAuth } from "../../contexts/AuthContext";
+import { useToast } from "../../contexts/ToastContext";
+import { useCurrency, CURRENCIES } from "../../contexts/CurrencyContext";
 
 interface SettingItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -73,12 +79,47 @@ export default function Settings() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { signOut, user } = useAuth();
+  const { showToast } = useToast();
+  const { currency, setCurrency } = useCurrency();
   
-  const [notifications, setNotifications] = React.useState(true);
-  const [darkMode, setDarkMode] = React.useState(false);
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState("");
 
-  const handleLogout = () => {
-    router.replace("/login");
+  // Get user details
+  const userName = user?.user_metadata?.full_name || 'User';
+  const userEmail = user?.email || 'No email';
+  const userInitials = userName
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'U';
+  
+  // Format account creation date
+  const accountCreated = user?.created_at 
+    ? new Date(user.created_at).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      })
+    : 'Unknown';
+  
+  // Check if email is verified
+  const isEmailVerified = user?.email_confirmed_at ? true : false;
+
+  const handleLogout = async () => {
+    try {
+      const result = await signOut();
+      if (result.success) {
+        showToast('Successfully logged out', 'success');
+        router.replace("/splash");
+      } else {
+        showToast(result.message || 'Logout failed', 'error');
+      }
+    } catch (error) {
+      showToast('An error occurred while logging out', 'error');
+    }
   };
 
   return (
@@ -94,15 +135,38 @@ export default function Settings() {
         <View style={styles.profileSection}>
           <View style={styles.profileCard}>
             <View style={styles.profileAvatar}>
-              <Text style={styles.profileInitials}>JD</Text>
+              <Text style={styles.profileInitials}>{userInitials}</Text>
             </View>
             <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>John Doe</Text>
-              <Text style={styles.profileEmail}>john.doe@example.com</Text>
+              <Text style={styles.profileName}>{userName}</Text>
+              <View style={styles.emailRow}>
+                <Text style={styles.profileEmail}>{userEmail}</Text>
+                {isEmailVerified && (
+                  <Ionicons name="checkmark-circle" size={14} color={colors.success} style={{ marginLeft: 4 }} />
+                )}
+              </View>
+              <Text style={styles.profileMeta}>Member since {accountCreated}</Text>
             </View>
-            <TouchableOpacity style={styles.editButton}>
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={() => router.push("/profile")}
+            >
               <Ionicons name="create-outline" size={20} color={colors.primary} />
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* General Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>General</Text>
+          <View style={styles.sectionContent}>
+            <SettingItem
+              icon="cash-outline"
+              title="Currency"
+              subtitle={`${currency.name} (${currency.symbol})`}
+              onPress={() => setShowCurrencyModal(true)}
+              colors={colors}
+            />
           </View>
         </View>
 
@@ -118,6 +182,13 @@ export default function Settings() {
               colors={colors}
             />
             <SettingItem
+              icon="pricetag-outline"
+              title="Brands"
+              subtitle="Manage product brands"
+              onPress={() => router.push("/brands")}
+              colors={colors}
+            />
+            <SettingItem
               icon="people-outline"
               title="Customers"
               subtitle="Manage customer database"
@@ -125,9 +196,10 @@ export default function Settings() {
               colors={colors}
             />
             <SettingItem
-              icon="pricetag-outline"
-              title="Discounts & Offers"
-              subtitle="Manage promotions"
+              icon="receipt-outline"
+              title="Sales History"
+              subtitle="View all sales and receipts"
+              onPress={() => router.push("/sales-history")}
               colors={colors}
             />
           </View>
@@ -140,50 +212,15 @@ export default function Settings() {
             <SettingItem
               icon="person-outline"
               title="Personal Information"
-              subtitle="Update your details"
+              subtitle={`User ID: ${user?.id?.slice(0, 8)}...` || "Update your details"}
+              onPress={() => router.push("/profile")}
               colors={colors}
             />
             <SettingItem
               icon="lock-closed-outline"
               title="Security"
               subtitle="Password and authentication"
-              colors={colors}
-            />
-            <SettingItem
-              icon="card-outline"
-              title="Subscription"
-              subtitle="Manage your plan"
-              colors={colors}
-            />
-          </View>
-        </View>
-
-        {/* Preferences Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Preferences</Text>
-          <View style={styles.sectionContent}>
-            <SettingItem
-              icon="notifications-outline"
-              title="Notifications"
-              subtitle="Push and email alerts"
-              toggle
-              toggleValue={notifications}
-              onToggle={setNotifications}
-              colors={colors}
-            />
-            <SettingItem
-              icon="moon-outline"
-              title="Dark Mode"
-              subtitle="Toggle dark theme"
-              toggle
-              toggleValue={darkMode}
-              onToggle={setDarkMode}
-              colors={colors}
-            />
-            <SettingItem
-              icon="language-outline"
-              title="Language"
-              subtitle="English (US)"
+              onPress={() => router.push("/security")}
               colors={colors}
             />
           </View>
@@ -195,44 +232,35 @@ export default function Settings() {
           <View style={styles.sectionContent}>
             <SettingItem
               icon="help-circle-outline"
-              title="Help Center"
-              subtitle="Get help and support"
-              colors={colors}
-            />
-            <SettingItem
-              icon="chatbubble-outline"
-              title="Contact Us"
-              subtitle="Reach out to our team"
+              title="Help & Support"
+              subtitle="Get help with the app"
+              onPress={() => router.push("/support")}
               colors={colors}
             />
             <SettingItem
               icon="document-text-outline"
-              title="Terms & Privacy"
-              subtitle="Legal information"
+              title="Privacy Policy"
+              subtitle="How we handle your data"
+              onPress={() => router.push("/privacy")}
+              colors={colors}
+            />
+            <SettingItem
+              icon="shield-checkmark-outline"
+              title="Terms of Service"
+              subtitle="Terms and conditions"
+              onPress={() => router.push("/terms")}
               colors={colors}
             />
           </View>
         </View>
 
-        {/* System Section */}
+        {/* About Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>System</Text>
+          <Text style={styles.sectionTitle}>About</Text>
           <View style={styles.sectionContent}>
             <SettingItem
-              icon="cloud-download-outline"
-              title="Backup"
-              subtitle="Backup your data"
-              colors={colors}
-            />
-            <SettingItem
-              icon="sync-outline"
-              title="Sync"
-              subtitle="Last synced 2 hours ago"
-              colors={colors}
-            />
-            <SettingItem
               icon="information-circle-outline"
-              title="About"
+              title="App Version"
               subtitle="Version 1.0.0"
               showArrow={false}
               colors={colors}
@@ -248,6 +276,76 @@ export default function Settings() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* Currency Selection Modal */}
+      <Modal
+        visible={showCurrencyModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCurrencyModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Currency</Text>
+              <TouchableOpacity onPress={() => setShowCurrencyModal(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+              <Ionicons name="search" size={20} color={colors.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search currency..."
+                placeholderTextColor={colors.textMuted}
+                value={currencySearch}
+                onChangeText={setCurrencySearch}
+              />
+            </View>
+
+            {/* Currency List */}
+            <FlatList
+              data={CURRENCIES.filter(c => 
+                c.name.toLowerCase().includes(currencySearch.toLowerCase()) ||
+                c.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
+                c.symbol.includes(currencySearch)
+              )}
+              keyExtractor={(item) => item.code}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.currencyItem,
+                    currency.code === item.code && styles.currencyItemActive
+                  ]}
+                  onPress={async () => {
+                    await setCurrency(item);
+                    setShowCurrencyModal(false);
+                    setCurrencySearch("");
+                  }}
+                >
+                  <View style={styles.currencyInfo}>
+                    <View style={styles.currencySymbolBox}>
+                      <Text style={styles.currencySymbol}>{item.symbol}</Text>
+                    </View>
+                    <View style={styles.currencyDetails}>
+                      <Text style={styles.currencyName}>{item.name}</Text>
+                      <Text style={styles.currencyCode}>{item.code}</Text>
+                    </View>
+                  </View>
+                  {currency.code === item.code && (
+                    <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              )}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.currencyList}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -308,9 +406,18 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     color: colors.text,
     marginBottom: 2,
   },
+  emailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   profileEmail: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  profileMeta: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   editButton: {
     width: 36,
@@ -388,5 +495,92 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
     color: colors.error,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '75%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    margin: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: colors.text,
+  },
+  currencyList: {
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  currencyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  currencyItemActive: {
+    backgroundColor: colors.primary + '08',
+  },
+  currencyInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  currencySymbolBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  currencySymbol: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  currencyDetails: {
+    flex: 1,
+  },
+  currencyName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  currencyCode: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
 });

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Alert,
   Keyboard,
@@ -18,20 +18,17 @@ import BarcodeScanner from "../components/BarcodeScanner";
 import { SearchBarWithScanner } from "../components/SearchBarWithScanner";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
-
-interface Product {
-  id: string;
-  name: string;
-  sku: string;
-  currentStock: number;
-  image?: string;
-}
+import { useProducts, Product } from "../contexts/ProductContext";
+import { useInventory } from "../contexts/InventoryContext";
+import { useToast } from "../contexts/ToastContext";
+import { useCurrency } from "../contexts/CurrencyContext";
 
 interface StockEntry {
   productId: string;
   productName: string;
   quantity: number;
   unitCost: number;
+  newSellingPrice?: number; // Optional new selling price
 }
 
 export default function StockIn() {
@@ -39,6 +36,12 @@ export default function StockIn() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { showToast } = useToast();
+  const { formatAmount } = useCurrency();
+  
+  // Context hooks
+  const { products, fetchProducts } = useProducts();
+  const { recordBatchStockMovement } = useInventory();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -50,20 +53,19 @@ export default function StockIn() {
   const [notes, setNotes] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [updatePrice, setUpdatePrice] = useState(false);
+  const [newSellingPrice, setNewSellingPrice] = useState("");
 
-  // Mock product data - replace with actual data from your backend
-  const mockProducts: Product[] = [
-    { id: "1", name: "iPhone 14 Pro", sku: "735745809198", currentStock: 45 },
-    { id: "2", name: "MacBook Air M2", sku: "MBA-M2", currentStock: 23 },
-    { id: "3", name: "AirPods Pro", sku: "APP-2", currentStock: 67 },
-    { id: "4", name: "iPad Pro 11", sku: "IPD11", currentStock: 12 },
-    { id: "5", name: "Apple Watch S9", sku: "AWS9", currentStock: 34 },
-  ];
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
-  const filteredProducts = mockProducts.filter(
+  const filteredProducts = products.filter(
     (product) =>
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase())
+      product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (product.barcode && product.barcode.includes(searchQuery))
   );
 
   const handleAddToList = () => {
@@ -72,14 +74,29 @@ export default function StockIn() {
       return;
     }
 
+    const qty = parseInt(quantity);
+    const cost = parseFloat(unitCost);
+
+    if (isNaN(qty) || qty <= 0) {
+      showToast("Please enter a valid quantity", "warning");
+      return;
+    }
+
+    if (isNaN(cost) || cost < 0) {
+      showToast("Please enter a valid unit cost", "warning");
+      return;
+    }
+
     const newEntry: StockEntry = {
       productId: selectedProduct.id,
       productName: selectedProduct.name,
-      quantity: parseInt(quantity),
-      unitCost: parseFloat(unitCost),
+      quantity: qty,
+      unitCost: cost,
+      ...(updatePrice && newSellingPrice ? { newSellingPrice: parseFloat(newSellingPrice) } : {}),
     };
 
     setStockEntries([...stockEntries, newEntry]);
+    showToast(`Added ${qty} units of ${selectedProduct.name}`, "success");
     
     // Reset form
     setSelectedProduct(null);
@@ -87,19 +104,28 @@ export default function StockIn() {
     setUnitCost("");
     setSearchQuery("");
     setIsFocused(false);
+    setUpdatePrice(false);
+    setNewSellingPrice("");
   };
 
   const handleRemoveEntry = (index: number) => {
+    const entry = stockEntries[index];
     setStockEntries(stockEntries.filter((_, i) => i !== index));
+    showToast(`Removed ${entry.productName}`, "info");
   };
 
   const calculateTotal = () => {
     return stockEntries.reduce((sum, entry) => sum + (entry.quantity * entry.unitCost), 0);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (stockEntries.length === 0) {
       Alert.alert("No Items", "Please add at least one item to stock in");
+      return;
+    }
+
+    if (!supplier.trim()) {
+      showToast("Please enter supplier name", "warning");
       return;
     }
 
@@ -110,39 +136,94 @@ export default function StockIn() {
         { text: "Cancel", style: "cancel" },
         {
           text: "Confirm",
-          onPress: () => {
-            // Handle stock in submission
-            Alert.alert("Success", "Stock has been added successfully");
-            router.back();
+          onPress: async () => {
+            setIsSubmitting(true);
+            try {
+              // Prepare items for batch processing
+              const items = stockEntries.map(entry => ({
+                product_id: entry.productId,
+                type: 'in' as const,
+                quantity: entry.quantity,
+                notes: `Stock in: ${entry.quantity} units at $${entry.unitCost.toFixed(2)} each`,
+              }));
+
+              // Create batch with all items (similar to sales)
+              const batchId = await recordBatchStockMovement(
+                items,
+                {
+                  type: 'in',
+                  reference: reference || undefined,
+                  supplier: supplier,
+                  notes: notes || `Stock in batch: ${stockEntries.length} items`,
+                }
+              );
+
+              if (!batchId) {
+                throw new Error('Failed to create stock in batch');
+              }
+
+              // Update product prices if specified
+              const priceUpdates = stockEntries.filter(entry => entry.newSellingPrice);
+              if (priceUpdates.length > 0) {
+                const { supabase } = await import('@/lib/supabase');
+                
+                for (const entry of priceUpdates) {
+                  const { error } = await supabase
+                    .from('products')
+                    .update({ 
+                      price: entry.newSellingPrice,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', entry.productId);
+                  
+                  if (error) {
+                    console.error(`Failed to update price for product ${entry.productId}:`, error);
+                  }
+                }
+                
+                showToast(`Stock added and ${priceUpdates.length} price(s) updated`, "success");
+              } else {
+                showToast(`Successfully added stock for ${stockEntries.length} products`, "success");
+              }
+              
+              // Reset form and navigate back
+              setStockEntries([]);
+              setReference("");
+              setSupplier("");
+              setNotes("");
+              router.back();
+            } catch (error: any) {
+              console.error('Error submitting stock in:', error);
+              showToast(error.message || "Failed to submit stock in", "error");
+            } finally {
+              setIsSubmitting(false);
+            }
           },
         },
       ]
     );
   };
 
-  const handleOutsideClick = () => {
-    // Only close if we're not clicking on a dropdown item
-    if (isFocused) {
-      setIsFocused(false);
-      Keyboard.dismiss();
-    }
-  };
-
-  const handleBarcodeScan = (data: string, type: string) => {
-    // Prevent multiple scans
-    if (showScanner === false) return;
+  const handleBarcodeScan = (data: string) => {
+    setShowScanner(false);
+    setSearchQuery(data);
     
-    // Search for product by barcode/SKU
-    const product = mockProducts.find(p => p.sku === data);
+    // Try to find product by barcode or SKU
+    const product = products.find(p => p.barcode === data || p.sku === data);
     
     if (product) {
       setSelectedProduct(product);
       setSearchQuery(product.name);
-      // No alert - just select the product silently
+      setIsFocused(false);
+      // Pre-fill cost price if available
+      if (product.cost_price) {
+        setUnitCost(product.cost_price.toString());
+      }
     } else {
       // If not found, put the barcode in search field
       setSearchQuery(data);
       setIsFocused(true); // Open search dropdown
+      showToast("Product not found with this barcode", "warning");
     }
   };
 
@@ -214,6 +295,10 @@ export default function StockIn() {
                             setSearchQuery(product.name);
                             setIsFocused(false);
                             Keyboard.dismiss();
+                            // Pre-fill cost price if available
+                            if (product.cost_price) {
+                              setUnitCost(product.cost_price.toString());
+                            }
                           }}
                         >
                           <View style={styles.productDropdownInfo}>
@@ -221,11 +306,11 @@ export default function StockIn() {
                               {product.name}
                             </Text>
                             <Text style={styles.productDropdownDetails}>
-                              SKU: {product.sku} • Stock: {product.currentStock}
+                              SKU: {product.sku} • Stock: {product.stock_quantity || 0}
                             </Text>
                           </View>
                           <View style={styles.stockBadge}>
-                            <Text style={styles.stockBadgeText}>{product.currentStock}</Text>
+                            <Text style={styles.stockBadgeText}>{product.stock_quantity || 0}</Text>
                           </View>
                         </TouchableOpacity>
                       ))
@@ -244,12 +329,24 @@ export default function StockIn() {
               <View style={styles.selectedProductInfo}>
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Current Stock:</Text>
-                  <Text style={styles.infoValue}>{selectedProduct.currentStock} units</Text>
+                  <Text style={styles.infoValue}>{selectedProduct.stock_quantity || 0} units</Text>
                 </View>
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>SKU:</Text>
                   <Text style={styles.infoValue}>{selectedProduct.sku}</Text>
                 </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Selling Price:</Text>
+                  <Text style={[styles.infoValue, styles.priceValue]}>
+                    {selectedProduct.price ? formatAmount(selectedProduct.price) : 'N/A'}
+                  </Text>
+                </View>
+                {selectedProduct.cost_price && (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Cost Price:</Text>
+                    <Text style={styles.infoValue}>{formatAmount(selectedProduct.cost_price)}</Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -267,7 +364,7 @@ export default function StockIn() {
                 />
               </View>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Unit Cost ($) *</Text>
+                <Text style={styles.inputLabel}>Unit Cost *</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="0.00"
@@ -278,6 +375,50 @@ export default function StockIn() {
                 />
               </View>
             </View>
+
+            {/* Selling Price Update Option */}
+            {selectedProduct && (
+              <View style={styles.priceUpdateSection}>
+                <TouchableOpacity 
+                  style={styles.priceUpdateToggle}
+                  onPress={() => {
+                    setUpdatePrice(!updatePrice);
+                    if (!updatePrice && selectedProduct.price) {
+                      setNewSellingPrice(selectedProduct.price.toString());
+                    } else {
+                      setNewSellingPrice("");
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.checkBox}>
+                    {updatePrice && (
+                      <Ionicons name="checkmark" size={16} color={colors.primary} />
+                    )}
+                  </View>
+                  <Text style={styles.checkBoxLabel}>Update Selling Price</Text>
+                </TouchableOpacity>
+
+                {updatePrice && (
+                  <View style={styles.newPriceInput}>
+                    <Text style={styles.inputLabel}>New Selling Price</Text>
+                    <TextInput
+                      style={[styles.input, styles.priceInput]}
+                      placeholder={selectedProduct.price ? selectedProduct.price.toString() : "0.00"}
+                      value={newSellingPrice}
+                      onChangeText={setNewSellingPrice}
+                      keyboardType="decimal-pad"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                    {unitCost && newSellingPrice && (
+                      <Text style={styles.marginInfo}>
+                        Margin: {((parseFloat(newSellingPrice) - parseFloat(unitCost)) / parseFloat(newSellingPrice) * 100).toFixed(1)}%
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.addButton, (!selectedProduct || !quantity || !unitCost) && styles.addButtonDisabled]}
@@ -299,11 +440,19 @@ export default function StockIn() {
                     <Text style={styles.entryName}>{entry.productName}</Text>
                     <View style={styles.entryDetails}>
                       <Text style={styles.entryText}>Qty: {entry.quantity}</Text>
-                      <Text style={styles.entryText}>@ ${entry.unitCost.toFixed(2)}</Text>
+                      <Text style={styles.entryText}>@ {formatAmount(entry.unitCost)}</Text>
                       <Text style={styles.entryTotal}>
-                        ${(entry.quantity * entry.unitCost).toFixed(2)}
+                        {formatAmount(entry.quantity * entry.unitCost)}
                       </Text>
                     </View>
+                    {entry.newSellingPrice && (
+                      <View style={styles.priceUpdateBadge}>
+                        <Ionicons name="pricetag" size={12} color={colors.primary} />
+                        <Text style={styles.priceUpdateText}>
+                          New price: {formatAmount(entry.newSellingPrice)}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <TouchableOpacity
                     style={styles.removeButton}
@@ -367,12 +516,12 @@ export default function StockIn() {
         {/* Submit Button - Fixed at bottom */}
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.submitButton, stockEntries.length === 0 && styles.submitButtonDisabled]}
+            style={[styles.submitButton, (stockEntries.length === 0 || isSubmitting) && styles.submitButtonDisabled]}
             onPress={handleSubmit}
-            disabled={stockEntries.length === 0}
+            disabled={stockEntries.length === 0 || isSubmitting}
           >
             <Text style={styles.submitButtonText}>
-              Confirm Stock In ({stockEntries.length} items)
+              {isSubmitting ? "Processing..." : `Confirm Stock In (${stockEntries.length} items)`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -383,8 +532,6 @@ export default function StockIn() {
         visible={showScanner}
         onClose={() => setShowScanner(false)}
         onScan={handleBarcodeScan}
-        title="Scan Product"
-        subtitle="Point camera at product barcode"
       />
     </SafeAreaView>
   );
@@ -513,6 +660,16 @@ const createStyles = (colors: typeof Colors.light) =>
       fontSize: 11,
       color: colors.textMuted,
     },
+    productPriceInfo: {
+      flexDirection: "column",
+      alignItems: "flex-end",
+      gap: 4,
+    },
+    productPrice: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.primary,
+    },
     stockBadge: {
       paddingHorizontal: 10,
       paddingVertical: 4,
@@ -609,6 +766,10 @@ const createStyles = (colors: typeof Colors.light) =>
       fontWeight: "500",
       color: colors.text,
     },
+    priceValue: {
+      color: colors.primary,
+      fontWeight: "600",
+    },
     inputRow: {
       flexDirection: "row",
       gap: 12,
@@ -687,6 +848,56 @@ const createStyles = (colors: typeof Colors.light) =>
       fontSize: 13,
       fontWeight: "600",
       color: colors.primary,
+    },
+    priceUpdateSection: {
+      marginBottom: 16,
+    },
+    priceUpdateToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+    },
+    checkBox: {
+      width: 20,
+      height: 20,
+      borderRadius: 4,
+      borderWidth: 2,
+      borderColor: colors.primary,
+      marginRight: 10,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    checkBoxLabel: {
+      fontSize: 14,
+      color: colors.text,
+      fontWeight: "500",
+    },
+    newPriceInput: {
+      marginTop: 12,
+      paddingLeft: 30,
+    },
+    priceInput: {
+      marginTop: 8,
+    },
+    marginInfo: {
+      fontSize: 12,
+      color: colors.success,
+      marginTop: 6,
+      fontWeight: "500",
+    },
+    priceUpdateBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 6,
+      paddingTop: 6,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderLight,
+    },
+    priceUpdateText: {
+      fontSize: 12,
+      color: colors.primary,
+      marginLeft: 6,
+      fontWeight: "500",
     },
     removeButton: {
       width: 36,

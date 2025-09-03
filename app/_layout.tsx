@@ -1,14 +1,25 @@
-import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { Slot } from "expo-router";
-
-const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!, {
-  unsavedChangesWarning: false,
-});
+import { AuthProvider } from "../contexts/AuthContext";
+import { ToastProvider } from "../contexts/ToastContext";
+import { ProductProvider } from "../contexts/ProductContext";
+import { InventoryProvider } from "../contexts/InventoryContext";
+import { CustomerProvider } from "../contexts/CustomerContext";
+import { CurrencyProvider } from "../contexts/CurrencyContext";
 
 export default function RootLayout() {
   return (
-    <ConvexProvider client={convex}>
-      <Slot />
-    </ConvexProvider>
+    <AuthProvider>
+      <ToastProvider>
+        <CurrencyProvider>
+          <ProductProvider>
+            <InventoryProvider>
+              <CustomerProvider>
+                <Slot />
+              </CustomerProvider>
+            </InventoryProvider>
+          </ProductProvider>
+        </CurrencyProvider>
+      </ToastProvider>
+    </AuthProvider>
   );
 }

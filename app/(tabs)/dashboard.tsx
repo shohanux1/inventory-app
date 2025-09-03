@@ -1,17 +1,22 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-  SafeAreaView,
-  Platform,
-} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import React, { useEffect, useState, useRef } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Colors } from "../../constants/Colors";
+import { useCurrency } from "../../contexts/CurrencyContext";
+import { useInventory } from "../../contexts/InventoryContext";
+import { useProducts } from "../../contexts/ProductContext";
 import { useColorScheme } from "../../hooks/useColorScheme";
 
 interface MetricCardProps {
@@ -64,35 +69,18 @@ interface RecentItemProps {
   title: string;
   subtitle: string;
   time: string;
-  type: "add" | "edit" | "remove";
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
   colors: typeof Colors.light;
 }
 
-const RecentItem: React.FC<RecentItemProps> = ({ title, subtitle, time, type, colors }) => {
+const RecentItem: React.FC<RecentItemProps> = ({ title, subtitle, time, icon, iconColor, colors }) => {
   const styles = createStyles(colors);
-  
-  const getTypeIcon = () => {
-    switch (type) {
-      case "add": return "add-circle";
-      case "edit": return "create";
-      case "remove": return "remove-circle";
-      default: return "ellipse";
-    }
-  };
-
-  const getTypeColor = () => {
-    switch (type) {
-      case "add": return colors.success;
-      case "edit": return colors.info;
-      case "remove": return colors.warning;
-      default: return colors.textSecondary;
-    }
-  };
 
   return (
     <TouchableOpacity style={styles.recentItem} activeOpacity={0.7}>
-      <View style={[styles.recentIcon, { backgroundColor: `${getTypeColor()}15` }]}>
-        <Ionicons name={getTypeIcon()} size={18} color={getTypeColor()} />
+      <View style={[styles.recentIcon, { backgroundColor: `${iconColor}15` }]}>
+        <Ionicons name={icon} size={20} color={iconColor} />
       </View>
       <View style={styles.recentContent}>
         <Text style={styles.recentTitle}>{title}</Text>
@@ -103,18 +91,210 @@ const RecentItem: React.FC<RecentItemProps> = ({ title, subtitle, time, type, co
   );
 };
 
+// Skeleton Loading Component
+const SkeletonDashboard: React.FC<{ colors: typeof Colors.light }> = ({ colors }) => {
+  const styles = createStyles(colors);
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Create shimmer animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const SkeletonBox: React.FC<{ 
+    width?: number | string; 
+    height?: number; 
+    style?: any;
+  }> = ({ width = '100%', height = 20, style = {} }) => {
+    const opacity = shimmerAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.3, 0.7],
+    });
+
+    return (
+      <Animated.View 
+        style={[
+          {
+            width,
+            height,
+            backgroundColor: colors.borderLight,
+            borderRadius: 8,
+            opacity,
+          },
+          style
+        ]}
+      />
+    );
+  };
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <SkeletonBox width={150} height={28} style={{ marginBottom: 8 }} />
+          <SkeletonBox width={200} height={16} />
+        </View>
+        <SkeletonBox width={42} height={42} style={{ borderRadius: 12 }} />
+      </View>
+
+      {/* Metrics Grid */}
+      <View style={styles.metricsGrid}>
+        {[1, 2, 3, 4].map((i) => (
+          <View key={i} style={styles.metricCard}>
+            <View style={styles.metricHeader}>
+              <SkeletonBox width={32} height={32} />
+              <SkeletonBox width={40} height={16} />
+            </View>
+            <SkeletonBox width={60} height={24} style={{ marginBottom: 8 }} />
+            <SkeletonBox width={80} height={14} />
+          </View>
+        ))}
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <SkeletonBox width={100} height={20} />
+        </View>
+        <View style={styles.actionsGrid}>
+          {[1, 2, 3, 4].map((i) => (
+            <View key={i} style={styles.actionButton}>
+              <SkeletonBox width={20} height={20} style={{ marginBottom: 6 }} />
+              <SkeletonBox width={60} height={12} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Low Stock Alert */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <SkeletonBox width={120} height={20} />
+          <SkeletonBox width={50} height={16} />
+        </View>
+        <View style={styles.alertCard}>
+          {[1, 2, 3].map((i) => (
+            <View key={i} style={styles.alertItem}>
+              <SkeletonBox width={8} height={8} style={{ borderRadius: 4 }} />
+              <SkeletonBox width={200} height={14} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Recent Activity */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <SkeletonBox width={120} height={20} />
+          <SkeletonBox width={50} height={16} />
+        </View>
+        <View style={styles.recentList}>
+          {[1, 2, 3].map((i) => (
+            <View key={i} style={styles.recentItem}>
+              <SkeletonBox width={40} height={40} style={{ borderRadius: 10, marginRight: 12 }} />
+              <View style={styles.recentContent}>
+                <SkeletonBox width={140} height={14} style={{ marginBottom: 4 }} />
+                <SkeletonBox width={100} height={12} />
+              </View>
+              <SkeletonBox width={50} height={12} />
+            </View>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+};
+
 export default function Dashboard() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { formatAmount } = useCurrency();
 
-  const onRefresh = React.useCallback(() => {
+  // Context hooks
+  const { products, categories, totalProductCount, fetchProducts, fetchCategories } = useProducts();
+  const { stats, stockBatches, fetchInventoryStats, fetchStockBatches } = useInventory();
+
+  useEffect(() => {
+    // Only load if we haven't loaded before or if data is empty
+    if (!hasLoadedOnce || products.length === 0) {
+      loadDashboardData();
+    } else {
+      // Data already exists, just refresh in background
+      setIsInitialLoad(false);
+      refreshDataInBackground();
+    }
+  }, []);
+
+  const loadDashboardData = async () => {
+    // Only show loading on first load when there's no data
+    if (!hasLoadedOnce) {
+      setIsInitialLoad(true);
+    }
+    
+    try {
+      // Ensure skeleton shows for at least 500ms to be visible
+      const startTime = Date.now();
+      
+      await Promise.all([
+        fetchProducts(),
+        fetchCategories(),
+        fetchInventoryStats(),
+        fetchStockBatches(4)
+      ]);
+      
+      const elapsedTime = Date.now() - startTime;
+      if (elapsedTime < 500 && !hasLoadedOnce) {
+        // Wait for remaining time to complete 500ms minimum
+        await new Promise(resolve => setTimeout(resolve, 500 - elapsedTime));
+      }
+      
+      setHasLoadedOnce(true);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setIsInitialLoad(false);
+    }
+  };
+
+  const refreshDataInBackground = async () => {
+    // Silently refresh data without showing loading state
+    try {
+      await Promise.all([
+        fetchInventoryStats(),
+        fetchStockBatches(4)
+      ]);
+      // Only refresh products if needed
+      if (totalProductCount === 0) {
+        await fetchProducts();
+      }
+    } catch (error) {
+      console.error('Error refreshing dashboard data:', error);
+    }
+  };
+
+  const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1500);
+    await loadDashboardData();
+    setRefreshing(false);
   }, []);
 
   const getGreeting = () => {
@@ -123,6 +303,109 @@ export default function Dashboard() {
     if (hour < 18) return "Good afternoon";
     return "Good evening";
   };
+
+  // Calculate dynamic values
+  const totalProducts = totalProductCount || products.length; // Use actual count from DB
+  const lowStockCount = stats?.lowStockItems || 0;
+  const categoriesCount = categories.length - 1; // Subtract "All" category
+  const totalValue = stats?.totalValue || 0;
+
+  // Calculate percentage changes (mock data for now, can be calculated from historical data)
+  const calculateChange = () => {
+    // In a real app, you'd compare with previous period data
+    // For now, using mock percentages that change based on current values
+    return {
+      products: totalProducts > 10 ? "+12%" : "+5%",
+      productsTrend: "up" as const,
+      lowStock: lowStockCount < 5 ? "-8%" : "+3%",
+      lowStockTrend: lowStockCount < 5 ? "down" as const : "up" as const,
+      categories: categoriesCount > 3 ? "+5%" : "+2%",
+      categoriesTrend: "up" as const,
+      value: totalValue > 50000 ? "+18%" : "+10%",
+      valueTrend: "up" as const,
+    };
+  };
+
+  const changes = calculateChange();
+
+  // Get low stock products
+  const lowStockProducts = products
+    .filter(p => {
+      const stock = p.stock_quantity || 0;
+      const minStock = p.min_stock_level || 10;
+      return stock > 0 && stock < minStock;
+    })
+    .slice(0, 3);
+
+  // Get recent stock batches for activity (includes sales as they create stock batches)
+  const recentActivities = stockBatches
+    .slice(0, 4)
+    .map(batch => {
+      // Check if this is a sale batch
+      const isSale = batch.reference?.startsWith('SALE-');
+      
+      // Determine icon and color based on type
+      let icon: keyof typeof Ionicons.glyphMap;
+      let iconColor: string;
+      
+      if (isSale) {
+        icon = 'cash-outline';
+        iconColor = colors.success;
+      } else if (batch.type === 'in') {
+        icon = 'arrow-down-circle-outline';
+        iconColor = colors.success;
+      } else if (batch.type === 'out') {
+        icon = 'arrow-up-circle-outline';
+        iconColor = colors.error;
+      } else if (batch.type === 'adjustment') {
+        icon = 'create-outline';
+        iconColor = colors.warning;
+      } else if (batch.type === 'transfer') {
+        icon = 'swap-horizontal-outline';
+        iconColor = colors.info;
+      } else {
+        icon = 'cube-outline';
+        iconColor = colors.textSecondary;
+      }
+      
+      return {
+        id: batch.id,
+        title: isSale 
+          ? `${batch.supplier || 'Walk-in Customer'}` 
+          : `${batch.supplier || `${batch.type === 'in' ? 'Stock In' : batch.type === 'out' ? 'Stock Out' : batch.type === 'adjustment' ? 'Adjustment' : 'Transfer'}`}`,
+        subtitle: isSale
+          ? `Sale - ${batch.total_items} items`
+          : `${batch.type === 'in' ? '+' : batch.type === 'out' ? '-' : ''}${batch.total_quantity} units`,
+        time: batch.created_at,
+        icon,
+        iconColor
+      };
+    });
+
+  // Format time ago
+  const formatTimeAgo = (date: string) => {
+    const now = new Date();
+    const then = new Date(date);
+    const diff = now.getTime() - then.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return "Yesterday";
+    return `${days}d ago`;
+  };
+
+  // Show loading only on very first load
+  if (isInitialLoad && !hasLoadedOnce) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <SkeletonDashboard colors={colors} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -148,33 +431,33 @@ export default function Dashboard() {
         <View style={styles.metricsGrid}>
           <MetricCard
             label="Total Products"
-            value="1,248"
-            change="+12%"
-            trending="up"
+            value={totalProducts.toString()}
+            change={changes.products}
+            trending={changes.productsTrend}
             icon="cube-outline"
             colors={colors}
           />
           <MetricCard
             label="Low Stock"
-            value="23"
-            change="-8%"
-            trending="down"
+            value={lowStockCount.toString()}
+            change={changes.lowStock}
+            trending={changes.lowStockTrend}
             icon="alert-circle-outline"
             colors={colors}
           />
           <MetricCard
             label="Categories"
-            value="45"
-            change="+5%"
-            trending="up"
+            value={categoriesCount.toString()}
+            change={changes.categories}
+            trending={changes.categoriesTrend}
             icon="grid-outline"
             colors={colors}
           />
           <MetricCard
             label="Total Value"
-            value="$125.8K"
-            change="+18%"
-            trending="up"
+            value={formatAmount(totalValue)}
+            change={changes.value}
+            trending={changes.valueTrend}
             icon="wallet-outline"
             colors={colors}
           />
@@ -223,18 +506,21 @@ export default function Dashboard() {
           </View>
           <View style={styles.alertCard}>
             <View style={styles.alertItems}>
-              <View style={styles.alertItem}>
-                <View style={styles.alertDot} />
-                <Text style={styles.alertText}>iPhone 14 Pro - 5 units left</Text>
-              </View>
-              <View style={styles.alertItem}>
-                <View style={[styles.alertDot, styles.alertDotWarning]} />
-                <Text style={styles.alertText}>MacBook Air M2 - 3 units left</Text>
-              </View>
-              <View style={styles.alertItem}>
-                <View style={styles.alertDot} />
-                <Text style={styles.alertText}>AirPods Pro - 8 units left</Text>
-              </View>
+              {lowStockProducts.length > 0 ? (
+                lowStockProducts.map((product) => (
+                  <View key={product.id} style={styles.alertItem}>
+                    <View style={[
+                      styles.alertDot,
+                      (product.stock_quantity || 0) <= 5 && styles.alertDotWarning
+                    ]} />
+                    <Text style={styles.alertText}>
+                      {product.name} - {product.stock_quantity || 0} units left
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noAlertsText}>No low stock items</Text>
+              )}
             </View>
           </View>
         </View>
@@ -243,39 +529,28 @@ export default function Dashboard() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Activity</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push("/sales-history")}>
               <Text style={styles.viewAll}>View all</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.recentList}>
-            <RecentItem
-              title="Stock Added"
-              subtitle="50 units of iPhone 15 Pro"
-              time="2h ago"
-              type="add"
-              colors={colors}
-            />
-            <RecentItem
-              title="Price Updated"
-              subtitle="Samsung Galaxy S24 Ultra"
-              time="4h ago"
-              type="edit"
-              colors={colors}
-            />
-            <RecentItem
-              title="Stock Issued"
-              subtitle="10 units of iPad Pro"
-              time="5h ago"
-              type="remove"
-              colors={colors}
-            />
-            <RecentItem
-              title="New Product"
-              subtitle="Apple Watch Series 9"
-              time="1d ago"
-              type="add"
-              colors={colors}
-            />
+            {recentActivities.length > 0 ? (
+              recentActivities.map((activity) => (
+                <RecentItem
+                  key={activity.id}
+                  title={activity.title}
+                  subtitle={activity.subtitle}
+                  time={formatTimeAgo(activity.time)}
+                  icon={activity.icon}
+                  iconColor={activity.iconColor}
+                  colors={colors}
+                />
+              ))
+            ) : (
+              <View style={styles.noActivityContainer}>
+                <Text style={styles.noActivityText}>No recent activity</Text>
+              </View>
+            )}
           </View>
         </View>
         <View style={{ height: 20 }} />
@@ -453,8 +728,8 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     borderColor: colors.borderLight,
   },
   recentIcon: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
@@ -476,5 +751,29 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   recentTime: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  noAlertsText: {
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  noActivityContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  noActivityText: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });

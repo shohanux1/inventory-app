@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "my-pos",
+    "name": "SwiftPOS",
     "slug": "my-pos",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,15 +13,17 @@
       "bundleIdentifier": "com.shohanurrahmandev.mypos",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#2563eb"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.shohanurrahmandev.mypos"
+      "package": "com.shohanurrahmandev.mypos",
+      "icon": "./assets/images/icon.png"
     },
     "web": {
       "bundler": "metro",
@@ -36,7 +38,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#2563eb"
         }
       ]
     ],

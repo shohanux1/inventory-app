@@ -55,6 +55,9 @@ export const SearchBarWithScanner: React.FC<SearchBarWithScannerProps> = ({
           onChangeText={onSearchChange}
           onFocus={onSearchFocus}
           onBlur={onSearchBlur}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
         />
         <TouchableOpacity onPress={onScanPress}>
           <Ionicons name="barcode-outline" size={20} color={colors.primary} />

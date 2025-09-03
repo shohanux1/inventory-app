@@ -2,17 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '../constants/Colors';
+import { Product } from '../contexts/ProductContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 interface ProductCardProps {
-  product: {
-    id: string;
-    name: string;
-    sku: string;
-    price: number;
-    stock: number;
-    category: string;
-    image?: string;
-  };
+  product: Product;
   onPress: () => void;
   onEdit?: () => void;
   colors: typeof Colors.light;
@@ -20,20 +14,23 @@ interface ProductCardProps {
 
 export default function ProductCard({ product, onPress, onEdit, colors }: ProductCardProps) {
   const styles = createStyles(colors);
+  const { formatAmount } = useCurrency();
   
   const getStockStatus = () => {
-    if (product.stock === 0) return { color: colors.error, text: 'Out of Stock' };
-    if (product.stock < 10) return { color: colors.warning, text: 'Low Stock' };
+    const stock = product.stock_quantity || 0;
+    if (stock === 0) return { color: colors.error, text: 'Out of Stock' };
+    if (stock < 10) return { color: colors.warning, text: 'Low Stock' };
     return { color: colors.success, text: 'In Stock' };
   };
 
   const stockStatus = getStockStatus();
+  const categoryName = product.categories?.name || product.category || 'Uncategorized';
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.imageContainer}>
-        {product.image ? (
-          <Image source={{ uri: product.image }} style={styles.image} />
+        {product.image_url ? (
+          <Image source={{ uri: product.image_url }} style={styles.image} />
         ) : (
           <View style={styles.imagePlaceholder}>
             <Ionicons name="cube-outline" size={20} color={colors.textMuted} />
@@ -56,13 +53,13 @@ export default function ProductCard({ product, onPress, onEdit, colors }: Produc
         
         <View style={styles.footer}>
           <View style={styles.priceContainer}>
-            <Text style={styles.price}>${product.price.toFixed(2)}</Text>
-            <Text style={styles.category}>{product.category}</Text>
+            <Text style={styles.price}>{formatAmount(product.price)}</Text>
+            <Text style={styles.category}>{categoryName}</Text>
           </View>
           
           <View style={styles.stockInfo}>
             <View style={[styles.stockIndicator, { backgroundColor: stockStatus.color }]} />
-            <Text style={styles.stockText}>{product.stock} in stock</Text>
+            <Text style={styles.stockText}>{product.stock_quantity || 0} in stock</Text>
           </View>
         </View>
       </View>
@@ -75,7 +72,6 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: colors.surface,
     borderRadius: 14,
-    marginHorizontal: 16,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: colors.borderLight,

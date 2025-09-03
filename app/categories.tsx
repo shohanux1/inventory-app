@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,31 +9,35 @@ import {
   Platform,
   TextInput,
   Modal,
-  Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
+import { useToast } from "../contexts/ToastContext";
+import { supabase } from "../lib/supabase";
 
 interface Category {
   id: string;
   name: string;
   icon: string;
   color: string;
-  itemCount: number;
+  itemCount?: number;
+  description?: string | null;
 }
 
-// Mock categories data
-const MOCK_CATEGORIES: Category[] = [
-  { id: "1", name: "Electronics", icon: "laptop-outline", color: "#3B82F6", itemCount: 156 },
-  { id: "2", name: "Clothing", icon: "shirt-outline", color: "#10B981", itemCount: 89 },
-  { id: "3", name: "Food & Beverages", icon: "fast-food-outline", color: "#F59E0B", itemCount: 234 },
-  { id: "4", name: "Home & Garden", icon: "home-outline", color: "#8B5CF6", itemCount: 67 },
-  { id: "5", name: "Sports", icon: "basketball-outline", color: "#EF4444", itemCount: 45 },
-  { id: "6", name: "Books", icon: "book-outline", color: "#06B6D4", itemCount: 128 },
-  { id: "7", name: "Toys & Games", icon: "game-controller-outline", color: "#EC4899", itemCount: 92 },
-  { id: "8", name: "Health & Beauty", icon: "fitness-outline", color: "#84CC16", itemCount: 176 },
+// Sample categories for fallback
+const SAMPLE_CATEGORIES: Category[] = [
+  { id: "1", name: "Electronics", icon: "laptop-outline", color: "#3B82F6", itemCount: 0 },
+  { id: "2", name: "Clothing", icon: "shirt-outline", color: "#10B981", itemCount: 0 },
+  { id: "3", name: "Food & Beverages", icon: "fast-food-outline", color: "#F59E0B", itemCount: 0 },
+  { id: "4", name: "Home & Garden", icon: "home-outline", color: "#8B5CF6", itemCount: 0 },
+  { id: "5", name: "Sports", icon: "basketball-outline", color: "#EF4444", itemCount: 0 },
+  { id: "6", name: "Books", icon: "book-outline", color: "#06B6D4", itemCount: 0 },
+  { id: "7", name: "Toys & Games", icon: "game-controller-outline", color: "#EC4899", itemCount: 0 },
+  { id: "8", name: "Health & Beauty", icon: "fitness-outline", color: "#84CC16", itemCount: 0 },
 ];
 
 const ICON_OPTIONS = [
@@ -54,14 +58,75 @@ export default function Categories() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { showToast } = useToast();
   
-  const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryName, setCategoryName] = useState("");
+  const [categoryDescription, setCategoryDescription] = useState("");
   const [selectedIcon, setSelectedIcon] = useState(ICON_OPTIONS[0]);
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [productCounts, setProductCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async (refresh = false) => {
+    if (refresh) setIsRefreshing(true);
+    else setIsLoading(true);
+    
+    try {
+      // Fetch categories
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name');
+      
+      if (categoriesError) {
+        if (categoriesError.code === 'PGRST205') {
+          console.log('Categories table not found. Using sample data.');
+          showToast('Database setup needed. Using sample data.', 'info');
+          setCategories(SAMPLE_CATEGORIES);
+        } else {
+          throw categoriesError;
+        }
+      } else if (categoriesData && categoriesData.length > 0) {
+        // Fetch product counts for each category
+        const counts: Record<string, number> = {};
+        for (const category of categoriesData) {
+          const { count } = await supabase
+            .from('products')
+            .select('id', { count: 'exact' })
+            .eq('category_id', category.id);
+          counts[category.id] = count || 0;
+        }
+        setProductCounts(counts);
+        
+        const mappedCategories = categoriesData.map(cat => ({
+          ...cat,
+          icon: cat.icon || 'folder-outline',
+          color: cat.color || '#3B82F6',
+          itemCount: counts[cat.id] || 0
+        }));
+        setCategories(mappedCategories);
+      } else {
+        // Use sample data if no categories in database
+        setCategories(SAMPLE_CATEGORIES);
+      }
+    } catch (error: any) {
+      console.error('Error fetching categories:', error);
+      showToast('Using offline mode', 'warning');
+      setCategories(SAMPLE_CATEGORIES);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
   const filteredCategories = categories.filter(category =>
     category.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -69,6 +134,7 @@ export default function Categories() {
 
   const handleAddCategory = () => {
     setCategoryName("");
+    setCategoryDescription("");
     setSelectedIcon(ICON_OPTIONS[0]);
     setSelectedColor(COLOR_OPTIONS[0]);
     setEditingCategory(null);
@@ -77,53 +143,86 @@ export default function Categories() {
 
   const handleEditCategory = (category: Category) => {
     setCategoryName(category.name);
+    setCategoryDescription(category.description || "");
     setSelectedIcon(category.icon);
     setSelectedColor(category.color);
     setEditingCategory(category);
     setShowAddModal(true);
   };
 
-  const handleSaveCategory = () => {
+  const handleSaveCategory = async () => {
     if (!categoryName.trim()) {
-      Alert.alert("Error", "Please enter a category name");
+      showToast("Please enter a category name", "warning");
       return;
     }
 
-    if (editingCategory) {
-      // Edit existing category
-      setCategories(categories.map(cat => 
-        cat.id === editingCategory.id 
-          ? { ...cat, name: categoryName, icon: selectedIcon, color: selectedColor }
-          : cat
-      ));
-    } else {
-      // Add new category
-      const newCategory: Category = {
-        id: Date.now().toString(),
-        name: categoryName,
-        icon: selectedIcon,
-        color: selectedColor,
-        itemCount: 0
-      };
-      setCategories([...categories, newCategory]);
+    setIsLoading(true);
+    try {
+      if (editingCategory) {
+        // Edit existing category
+        const { error } = await supabase
+          .from('categories')
+          .update({
+            name: categoryName,
+            description: categoryDescription || null,
+            icon: selectedIcon,
+            color: selectedColor,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingCategory.id);
+
+        if (error) throw error;
+        
+        showToast("Category updated successfully", "success");
+      } else {
+        // Add new category
+        const { error } = await supabase
+          .from('categories')
+          .insert({
+            name: categoryName,
+            description: categoryDescription || null,
+            icon: selectedIcon,
+            color: selectedColor
+          });
+
+        if (error) throw error;
+        
+        showToast("Category added successfully", "success");
+      }
+      
+      // Refresh categories
+      await fetchCategories();
+      setShowAddModal(false);
+    } catch (error: any) {
+      console.error('Error saving category:', error);
+      showToast(error.message || "Failed to save category", "error");
+    } finally {
+      setIsLoading(false);
     }
-    
-    setShowAddModal(false);
   };
 
-  const handleDeleteCategory = (categoryId: string) => {
-    Alert.alert(
-      "Delete Category",
-      "Are you sure you want to delete this category?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: () => setCategories(categories.filter(cat => cat.id !== categoryId))
-        }
-      ]
-    );
+  const handleDeleteCategory = async (categoryId: string) => {
+    try {
+      // Check if category has products
+      const category = categories.find(cat => cat.id === categoryId);
+      if (category && category.itemCount && category.itemCount > 0) {
+        showToast("Cannot delete category with products", "warning");
+        return;
+      }
+
+      const { error } = await supabase
+        .from('categories')
+        .delete()
+        .eq('id', categoryId);
+
+      if (error) throw error;
+      
+      showToast("Category deleted successfully", "success");
+      await fetchCategories();
+    } catch (error: any) {
+      console.error('Error deleting category:', error);
+      showToast(error.message || "Failed to delete category", "error");
+    }
   };
 
   return (
@@ -166,14 +265,29 @@ export default function Categories() {
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>
-            {categories.reduce((sum, cat) => sum + cat.itemCount, 0)}
+            {categories.reduce((sum, cat) => sum + (cat.itemCount || 0), 0)}
           </Text>
           <Text style={styles.statLabel}>Total Products</Text>
         </View>
       </View>
 
       {/* Categories Grid */}
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
+      {isLoading && !isRefreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading categories...</Text>
+        </View>
+      ) : (
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => fetchCategories(true)}
+            colors={[colors.primary]}
+          />
+        }>
         <View style={styles.categoriesGrid}>
           {filteredCategories.map((category, index) => (
             <View key={category.id} style={styles.categoryCard}>
@@ -216,6 +330,7 @@ export default function Categories() {
         
         <View style={{ height: 20 }} />
       </ScrollView>
+      )}
 
       {/* Add/Edit Category Modal */}
       <Modal
@@ -244,6 +359,20 @@ export default function Categories() {
                 placeholderTextColor={colors.textMuted}
                 value={categoryName}
                 onChangeText={setCategoryName}
+              />
+            </View>
+
+            {/* Category Description Input */}
+            <View style={styles.inputSection}>
+              <Text style={styles.inputLabel}>Description (Optional)</Text>
+              <TextInput
+                style={[styles.textInput, { height: 60, textAlignVertical: 'top' }]}
+                placeholder="Enter category description"
+                placeholderTextColor={colors.textMuted}
+                value={categoryDescription}
+                onChangeText={setCategoryDescription}
+                multiline
+                numberOfLines={2}
               />
             </View>
 
@@ -316,12 +445,17 @@ export default function Categories() {
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.saveButton}
+                style={[styles.saveButton, isLoading && { opacity: 0.6 }]}
                 onPress={handleSaveCategory}
+                disabled={isLoading}
               >
-                <Text style={styles.saveButtonText}>
-                  {editingCategory ? "Update" : "Add"} Category
-                </Text>
+                {isLoading ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.saveButtonText}>
+                    {editingCategory ? "Update" : "Add"} Category
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -610,5 +744,16 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: "white",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 100,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,16 +7,20 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Platform,
+  RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Colors } from "../../constants/Colors";
-import { useColorScheme } from "../../hooks/useColorScheme";
+import { Colors } from "@/constants/Colors";
+import { useColorScheme } from "@/hooks/useColorScheme";
+import { useInventory } from "@/contexts/InventoryContext";
+import { useProducts } from "@/contexts/ProductContext";
 
 interface StockCardProps {
   title: string;
   subtitle: string;
-  value: string;
+  value: string | number;
   icon: keyof typeof Ionicons.glyphMap;
   trend?: number;
   colors: typeof Colors.light;
@@ -65,19 +69,21 @@ const StockCard: React.FC<StockCardProps> = ({
 };
 
 interface TransactionItemProps {
-  type: "in" | "out" | "transfer" | "adjust";
-  product: string;
+  type: "in" | "out" | "transfer" | "adjust" | "adjustment";
+  title: string;
+  subtitle: string;
   quantity: number;
-  user: string;
+  reference?: string;
   time: string;
   colors: typeof Colors.light;
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({
   type,
-  product,
+  title,
+  subtitle,
   quantity,
-  user,
+  reference,
   time,
   colors,
 }) => {
@@ -104,10 +110,17 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           label: "Transfer"
         };
       case "adjust":
+      case "adjustment":
         return { 
           icon: "create" as keyof typeof Ionicons.glyphMap, 
           color: colors.warning,
           label: "Adjustment"
+        };
+      default:
+        return { 
+          icon: "help-circle" as keyof typeof Ionicons.glyphMap, 
+          color: colors.textSecondary,
+          label: "Unknown"
         };
     }
   };
@@ -120,11 +133,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         <Ionicons name={details.icon} size={20} color={details.color} />
       </View>
       <View style={styles.transactionContent}>
-        <Text style={styles.transactionProduct}>{product}</Text>
+        <Text style={styles.transactionProduct}>{title}</Text>
         <View style={styles.transactionMeta}>
           <Text style={styles.transactionLabel}>{details.label}</Text>
           <Text style={styles.transactionDot}>•</Text>
-          <Text style={styles.transactionUser}>{user}</Text>
+          <Text style={styles.transactionUser}>{subtitle}</Text>
         </View>
       </View>
       <View style={styles.transactionRight}>
@@ -180,51 +193,41 @@ export default function Inventory() {
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
   const [selectedPeriod, setSelectedPeriod] = useState("Today");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const {
+    stats,
+    stockMovements,
+    stockBatches,
+    isLoading,
+    fetchInventoryStats,
+    fetchStockMovements,
+    fetchStockBatches,
+    recordStockMovement,
+  } = useInventory();
+
+  const { fetchProducts } = useProducts();
 
   const periods = ["Today", "Week", "Month", "Year"];
 
-  const transactions = [
-    {
-      id: "1",
-      type: "in" as const,
-      product: "iPhone 15 Pro Max",
-      quantity: 25,
-      user: "John Doe",
-      time: "2 hours ago",
-    },
-    {
-      id: "2",
-      type: "out" as const,
-      product: "MacBook Air M2",
-      quantity: 5,
-      user: "Jane Smith",
-      time: "3 hours ago",
-    },
-    {
-      id: "3",
-      type: "transfer" as const,
-      product: "iPad Pro 12.9",
-      quantity: 10,
-      user: "Store B",
-      time: "5 hours ago",
-    },
-    {
-      id: "4",
-      type: "adjust" as const,
-      product: "AirPods Pro 2",
-      quantity: 3,
-      user: "System",
-      time: "Yesterday",
-    },
-    {
-      id: "5",
-      type: "in" as const,
-      product: "Apple Watch Series 9",
-      quantity: 15,
-      user: "Supplier A",
-      time: "Yesterday",
-    },
-  ];
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    await Promise.all([
+      fetchInventoryStats(),
+      fetchStockMovements(),
+      fetchStockBatches(10),
+      fetchProducts()
+    ]);
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadData();
+    setIsRefreshing(false);
+  };
 
   const handleStockIn = () => {
     router.push("/stock-in");
@@ -235,23 +238,161 @@ export default function Inventory() {
   };
 
   const handleTransfer = () => {
-    router.push("/stock-transfer");
+    // Navigate to transfer page when created
+    console.log("Transfer feature coming soon");
   };
 
   const handleAdjustment = () => {
-    router.push("/stock-adjustment");
+    // Navigate to adjustment page when created
+    console.log("Adjustment feature coming soon");
   };
+
+  // Calculate period-based stats with trends using batches
+  const calculatePeriodStats = () => {
+    const now = new Date();
+    let startDate = new Date();
+    let prevStartDate = new Date();
+    let prevEndDate = new Date();
+    
+    switch (selectedPeriod) {
+      case "Today":
+        startDate.setHours(0, 0, 0, 0);
+        prevStartDate = new Date(now);
+        prevStartDate.setDate(prevStartDate.getDate() - 1);
+        prevStartDate.setHours(0, 0, 0, 0);
+        prevEndDate = new Date(prevStartDate);
+        prevEndDate.setHours(23, 59, 59, 999);
+        break;
+      case "Week":
+        startDate.setDate(now.getDate() - 7);
+        prevStartDate.setDate(now.getDate() - 14);
+        prevEndDate.setDate(now.getDate() - 7);
+        break;
+      case "Month":
+        startDate.setMonth(now.getMonth() - 1);
+        prevStartDate.setMonth(now.getMonth() - 2);
+        prevEndDate.setMonth(now.getMonth() - 1);
+        break;
+      case "Year":
+        startDate.setFullYear(now.getFullYear() - 1);
+        prevStartDate.setFullYear(now.getFullYear() - 2);
+        prevEndDate.setFullYear(now.getFullYear() - 1);
+        break;
+    }
+
+    // Current period batches
+    const periodBatches = stockBatches.filter(b => 
+      new Date(b.created_at) >= startDate
+    );
+
+    // Previous period batches for comparison
+    const prevBatches = stockBatches.filter(b => {
+      const date = new Date(b.created_at);
+      return date >= prevStartDate && date < prevEndDate;
+    });
+
+    // Calculate current period values using batches
+    const totalIn = periodBatches
+      .filter(b => b.type === 'in')
+      .reduce((sum, b) => sum + b.total_quantity, 0);
+    
+    const totalOut = periodBatches
+      .filter(b => b.type === 'out')
+      .reduce((sum, b) => sum + b.total_quantity, 0);
+    
+    const transfers = periodBatches
+      .filter(b => b.type === 'transfer')
+      .reduce((sum, b) => sum + b.total_quantity, 0);
+    
+    const adjustments = periodBatches
+      .filter(b => b.type === 'adjustment')
+      .reduce((sum, b) => sum + b.total_quantity, 0);
+
+    // Calculate previous period values
+    const prevTotalIn = prevBatches
+      .filter(b => b.type === 'in')
+      .reduce((sum, b) => sum + b.total_quantity, 0);
+    
+    const prevTotalOut = prevBatches
+      .filter(b => b.type === 'out')
+      .reduce((sum, b) => sum + b.total_quantity, 0);
+    
+    const prevTransfers = prevBatches
+      .filter(b => b.type === 'transfer')
+      .reduce((sum, b) => sum + b.total_quantity, 0);
+    
+    const prevAdjustments = prevBatches
+      .filter(b => b.type === 'adjustment')
+      .reduce((sum, b) => sum + b.total_quantity, 0);
+
+    // Calculate percentage changes
+    const calculateTrend = (current: number, previous: number) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    return { 
+      totalIn, 
+      totalOut, 
+      transfers, 
+      adjustments,
+      totalInTrend: calculateTrend(totalIn, prevTotalIn),
+      totalOutTrend: calculateTrend(totalOut, prevTotalOut),
+      transfersTrend: calculateTrend(transfers, prevTransfers),
+      adjustmentsTrend: calculateTrend(adjustments, prevAdjustments)
+    };
+  };
+
+  const periodStats = calculatePeriodStats();
+
+  // Format time ago
+  const formatTimeAgo = (date: string) => {
+    const now = new Date();
+    const then = new Date(date);
+    const diff = now.getTime() - then.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    
+    if (hours < 1) return "Just now";
+    if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    if (days === 1) return "Yesterday";
+    if (days < 7) return `${days} days ago`;
+    return then.toLocaleDateString();
+  };
+
+  if (isLoading && !stats) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading inventory...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>Inventory Operations</Text>
             <Text style={styles.subtitle}>Manage your stock movements</Text>
           </View>
-          <TouchableOpacity style={styles.historyButton}>
+          <TouchableOpacity 
+            style={styles.historyButton}
+            onPress={() => router.push("/stock-history")}
+          >
             <Ionicons name="time-outline" size={22} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -294,32 +435,33 @@ export default function Inventory() {
           <StockCard
             title="Total In"
             subtitle="Items received"
-            value="1,245"
+            value={periodStats.totalIn.toLocaleString()}
             icon="arrow-down-circle-outline"
-            trend={12}
+            trend={periodStats.totalInTrend}
             colors={colors}
           />
           <StockCard
             title="Total Out"
             subtitle="Items issued"
-            value="892"
+            value={periodStats.totalOut.toLocaleString()}
             icon="arrow-up-circle-outline"
-            trend={-8}
+            trend={periodStats.totalOutTrend}
             colors={colors}
           />
           <StockCard
             title="Transfers"
             subtitle="Between locations"
-            value="156"
+            value={periodStats.transfers.toLocaleString()}
             icon="swap-horizontal-outline"
-            trend={5}
+            trend={periodStats.transfersTrend}
             colors={colors}
           />
           <StockCard
             title="Adjustments"
             subtitle="Stock corrections"
-            value="23"
+            value={periodStats.adjustments.toLocaleString()}
             icon="create-outline"
+            trend={periodStats.adjustmentsTrend}
             colors={colors}
           />
         </ScrollView>
@@ -370,17 +512,33 @@ export default function Inventory() {
             </TouchableOpacity>
           </View>
           <View style={styles.transactionsList}>
-            {transactions.map((transaction) => (
-              <TransactionItem
-                key={transaction.id}
-                type={transaction.type}
-                product={transaction.product}
-                quantity={transaction.quantity}
-                user={transaction.user}
-                time={transaction.time}
-                colors={colors}
-              />
-            ))}
+            {stockBatches.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="cube-outline" size={48} color={colors.textMuted} />
+                <Text style={styles.emptyText}>No transactions yet</Text>
+                <Text style={styles.emptySubtext}>
+                  Start by adding stock in or out
+                </Text>
+              </View>
+            ) : (
+              stockBatches.slice(0, 4).map((batch) => {
+                // Check if this is a sale batch
+                const isSale = batch.reference?.startsWith('SALE-');
+                
+                return (
+                  <TransactionItem
+                    key={batch.id}
+                    type={batch.type}
+                    title={batch.supplier || (isSale ? 'Sale' : `${batch.type === 'in' ? 'Stock In' : batch.type === 'out' ? 'Stock Out' : batch.type === 'adjustment' ? 'Adjustment' : 'Transfer'}`)}
+                    subtitle={`${batch.total_items} items • ${batch.total_quantity} units`}
+                    quantity={batch.total_quantity}
+                    reference={batch.reference}
+                    time={formatTimeAgo(batch.created_at)}
+                    colors={colors}
+                  />
+                );
+              })
+            )}
           </View>
         </View>
 
@@ -394,6 +552,16 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   header: {
     flexDirection: "row",
@@ -614,5 +782,24 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   transactionTime: {
     fontSize: 11,
     color: colors.textMuted,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  emptySubtext: {
+    marginTop: 4,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });

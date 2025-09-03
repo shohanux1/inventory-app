@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,14 +9,17 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Image,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Colors } from "../constants/Colors";
 import { useColorScheme } from "../hooks/useColorScheme";
+import { supabase, Product, Category } from "../lib/supabase";
+import { useToast } from "../contexts/ToastContext";
+import { ImageUpload, uploadProductImage } from "../components/ImageUpload";
+import BarcodeScanner from "../components/BarcodeScanner";
 
-const CATEGORIES = ["Smartphones", "Laptops", "Tablets", "Accessories", "Wearables", "Other"];
 
 interface FormInputProps {
   label: string;
@@ -71,41 +74,147 @@ export default function AddProduct() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
+  const { showToast } = useToast();
 
   const [productName, setProductName] = useState("");
   const [sku, setSku] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [price, setPrice] = useState("");
   const [cost, setCost] = useState("");
   const [quantity, setQuantity] = useState("");
   const [minStock, setMinStock] = useState("");
-  const [productImage, setProductImage] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
-  const handleSave = () => {
-    console.log("Save product:", {
-      productName,
-      sku,
-      description,
-      category,
-      price,
-      cost,
-      quantity,
-      minStock,
-    });
-    router.back();
+  // Fetch categories on component mount
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        // Check if it's a table not found error
+        if (error.code === 'PGRST205') {
+          console.log('Categories table not found. Please run the database schema.');
+          showToast('Database setup needed. Please run the SQL schema.', 'warning');
+          // Set some default categories for UI
+          setCategories([
+            { id: '1', name: 'Electronics' },
+            { id: '2', name: 'Clothing' },
+            { id: '3', name: 'Food & Beverages' },
+            { id: '4', name: 'Other' },
+          ] as any);
+          setIsLoading(false);
+          return;
+        }
+        throw error;
+      }
+      
+      // If no categories exist, create default ones
+      if (!data || data.length === 0) {
+        const defaultCategories = [
+          { name: 'Electronics', description: 'Electronic devices and gadgets' },
+          { name: 'Clothing', description: 'Apparel and fashion items' },
+          { name: 'Food & Beverages', description: 'Food and drink items' },
+          { name: 'Home & Garden', description: 'Home improvement and garden supplies' },
+          { name: 'Sports & Outdoors', description: 'Sporting goods and outdoor equipment' },
+          { name: 'Other', description: 'Miscellaneous items' },
+        ];
+        
+        const { data: newCategories, error: insertError } = await supabase
+          .from('categories')
+          .insert(defaultCategories)
+          .select();
+        
+        if (insertError) throw insertError;
+        setCategories(newCategories || []);
+      } else {
+        setCategories(data);
+      }
+    } catch (error: any) {
+      console.error('Error fetching categories:', error);
+      showToast('Failed to load categories', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!isFormValid) {
+      showToast('Please fill in all required fields', 'warning');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Upload image if exists
+      let imageUrl = null;
+      if (selectedImage) {
+        imageUrl = await uploadProductImage(selectedImage, sku, (error) => {
+          showToast(error, 'error');
+        });
+      }
+
+      // Create product object
+      const newProduct: Partial<Product> = {
+        name: productName.trim(),
+        sku: sku.trim(),
+        barcode: sku.trim(),
+        description: description.trim() || undefined,
+        category_id: selectedCategoryId || undefined,
+        price: parseFloat(price),
+        cost_price: cost ? parseFloat(cost) : undefined,
+        stock_quantity: parseInt(quantity),
+        min_stock_level: minStock ? parseInt(minStock) : 10,
+        image_url: imageUrl || undefined,
+      };
+
+      // Insert product into Supabase
+      const { error } = await supabase
+        .from('products')
+        .insert([newProduct])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      showToast('Product added successfully!', 'success');
+      router.back();
+    } catch (error: any) {
+      console.error('Error saving product:', error);
+      showToast(error.message || 'Failed to add product', 'error');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
     router.back();
   };
 
-  const handleImagePick = () => {
-    console.log("Pick image");
-    // Implement image picker
+  const handleScanBarcode = () => {
+    setShowScanner(true);
   };
 
-  const isFormValid = productName && sku && category && price && quantity;
+  const handleBarcodeScan = (data: string) => {
+    // Set SKU to the scanned barcode value
+    setSku(data);
+    setShowScanner(false);
+    showToast(`Barcode scanned: ${data}`, 'success');
+  };
+
+  const isFormValid = productName && sku && selectedCategoryId && price && quantity;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -120,14 +229,18 @@ export default function AddProduct() {
           <Text style={styles.headerTitle}>Add Product</Text>
           <TouchableOpacity
             onPress={handleSave}
-            style={[styles.headerButton, !isFormValid && styles.disabledButton]}
-            disabled={!isFormValid}
+            style={[styles.headerButton, (!isFormValid || isSaving) && styles.disabledButton]}
+            disabled={!isFormValid || isSaving}
           >
-            <Ionicons 
-              name="checkmark" 
-              size={24} 
-              color={isFormValid ? colors.primary : colors.textMuted} 
-            />
+            {isSaving ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons 
+                name="checkmark" 
+                size={24} 
+                color={isFormValid ? colors.primary : colors.textMuted} 
+              />
+            )}
           </TouchableOpacity>
         </View>
 
@@ -137,16 +250,15 @@ export default function AddProduct() {
           keyboardShouldPersistTaps="handled"
         >
           {/* Image Section */}
-          <TouchableOpacity style={styles.imageSection} onPress={handleImagePick}>
-            {productImage ? (
-              <Image source={{ uri: productImage }} style={styles.productImage} />
-            ) : (
-              <View style={styles.imagePlaceholder}>
-                <Ionicons name="camera-outline" size={32} color={colors.textMuted} />
-                <Text style={styles.imageText}>Add Product Image</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <View style={styles.imageSection}>
+            <ImageUpload
+              imageUrl={null}
+              onImageSelected={setSelectedImage}
+              productSku={sku}
+              colors={colors}
+              disabled={isSaving}
+            />
+          </View>
 
           {/* Basic Information */}
           <View style={styles.section}>
@@ -162,16 +274,30 @@ export default function AddProduct() {
               colors={colors}
             />
 
-            <FormInput
-              label="SKU"
-              value={sku}
-              onChangeText={setSku}
-              placeholder="Enter SKU or barcode"
-              required
-              icon="barcode-outline"
-              colors={colors}
-            />
-
+            <View style={styles.formGroup}>
+              <View style={styles.labelContainer}>
+                <Ionicons name="pricetag-outline" size={16} color={colors.textSecondary} />
+                <Text style={styles.label}>
+                  SKU (Barcode)<Text style={styles.required}> *</Text>
+                </Text>
+              </View>
+              <View style={styles.barcodeContainer}>
+                <TextInput
+                  style={[styles.input, styles.barcodeInput]}
+                  value={sku}
+                  onChangeText={setSku}
+                  placeholder="Enter or scan barcode"
+                  placeholderTextColor={colors.textMuted}
+                />
+                <TouchableOpacity 
+                  style={styles.scanButton}
+                  onPress={handleScanBarcode}
+                >
+                  <Ionicons name="scan" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            
             <FormInput
               label="Description"
               value={description}
@@ -190,31 +316,39 @@ export default function AddProduct() {
                   Category<Text style={styles.required}> *</Text>
                 </Text>
               </View>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                style={styles.categoryContainer}
-              >
-                {CATEGORIES.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[
-                      styles.categoryChip,
-                      category === cat && styles.categoryChipActive,
-                    ]}
-                    onPress={() => setCategory(cat)}
+              {isLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ padding: 10 }} />
+              ) : (
+                <View style={styles.categoriesWrapper}>
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.categoryContainer}
+                    bounces={false}
                   >
-                    <Text
-                      style={[
-                        styles.categoryChipText,
-                        category === cat && styles.categoryChipTextActive,
-                      ]}
-                    >
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                    {categories.map((cat) => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                          styles.categoryChip,
+                          selectedCategoryId === cat.id && styles.categoryChipActive,
+                        ]}
+                        onPress={() => setSelectedCategoryId(cat.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryChipText,
+                            selectedCategoryId === cat.id && styles.categoryChipTextActive,
+                          ]}
+                        >
+                          {cat.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
             </View>
           </View>
 
@@ -301,6 +435,13 @@ export default function AddProduct() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
+      
+      {/* Barcode Scanner Modal */}
+      <BarcodeScanner
+        visible={showScanner}
+        onScan={handleBarcodeScan}
+        onClose={() => setShowScanner(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -395,6 +536,22 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     fontSize: 15,
     color: colors.text,
   },
+  barcodeContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  barcodeInput: {
+    flex: 1,
+  },
+  scanButton: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   textArea: {
     minHeight: 80,
     textAlignVertical: "top",
@@ -402,9 +559,16 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   row: {
     flexDirection: "row",
   },
+  categoriesWrapper: {
+    marginTop: 8,
+    marginHorizontal: -16, // Compensate for section padding
+  },
   categoryContainer: {
+    paddingHorizontal: 16,
+    gap: 10,
     flexDirection: "row",
-    maxHeight: 40,
+    alignItems: "center",
+    paddingVertical: 4,
   },
   categoryChip: {
     paddingHorizontal: 16,
@@ -412,20 +576,30 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     borderRadius: 20,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: 8,
+    borderColor: colors.borderLight || colors.border,
+    marginRight: 10,
+    height: 36,
+    justifyContent: "center",
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    elevation: 1,
   },
   categoryChipActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primary + '10',
     borderColor: colors.primary,
+    borderWidth: 1.5,
   },
   categoryChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
-    color: colors.textSecondary,
+    color: colors.textMuted || colors.textSecondary,
+    letterSpacing: 0.2,
   },
   categoryChipTextActive: {
-    color: "#FFFFFF",
+    color: colors.primary,
+    fontWeight: "600",
   },
   actions: {
     padding: 16,
