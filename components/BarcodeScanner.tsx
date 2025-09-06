@@ -7,11 +7,13 @@ import {
   Modal,
   Platform,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/Colors';
 import { useColorScheme } from '../hooks/useColorScheme';
+import { PermissionModal } from './PermissionModal';
 
 interface BarcodeScannerProps {
   visible: boolean;
@@ -34,6 +36,7 @@ export default function BarcodeScanner({
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [flashEnabled, setFlashEnabled] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
   const { width: screenWidth } = Dimensions.get('window');
   const scannerSize = screenWidth * 0.7;
 
@@ -43,9 +46,9 @@ export default function BarcodeScanner({
       setScanned(false);
       setFlashEnabled(false);
       
-      // Request permission if needed
-      if (!permission?.granted) {
-        requestPermission();
+      // Check permission status
+      if (!permission?.granted && permission?.canAskAgain) {
+        setShowPermissionModal(true);
       }
     }
   }, [visible]);
@@ -66,32 +69,56 @@ export default function BarcodeScanner({
     }, 100);
   };
 
+  const handlePermissionAllow = async () => {
+    setShowPermissionModal(false);
+    const result = await requestPermission();
+    if (!result.granted) {
+      Alert.alert(
+        'Permission Denied',
+        'Camera permission is required to scan barcodes. Please enable it in your device settings.',
+        [{ text: 'OK', onPress: onClose }]
+      );
+    }
+  };
+
+  const handlePermissionDeny = () => {
+    setShowPermissionModal(false);
+    onClose();
+  };
+
   if (!permission) {
     return null;
   }
 
   if (!permission.granted) {
     return (
-      <Modal
-        visible={visible}
-        animationType="slide"
-        presentationStyle="fullScreen"
-        onRequestClose={onClose}
-      >
-        <View style={styles.permissionContainer}>
-          <Ionicons name="camera-outline" size={64} color={colors.textSecondary} />
-          <Text style={styles.permissionTitle}>Camera Permission Required</Text>
-          <Text style={styles.permissionText}>
-            We need camera access to scan barcodes and QR codes
-          </Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-            <Text style={styles.permissionButtonText}>Grant Permission</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Text style={styles.closeButtonText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
+      <>
+        <PermissionModal
+          visible={showPermissionModal}
+          onAllow={handlePermissionAllow}
+          onDeny={handlePermissionDeny}
+          permissionType="camera"
+          title="Camera Access Required"
+          description="To scan product barcodes and QR codes, we need access to your camera. This helps you quickly add products to inventory or make sales."
+          colors={colors}
+        />
+        {!showPermissionModal && (
+          <Modal
+            visible={visible}
+            animationType="fade"
+            transparent={true}
+            onRequestClose={onClose}
+          >
+            <View style={styles.permissionFallback}>
+              <TouchableOpacity 
+                style={styles.permissionFallbackOverlay} 
+                onPress={onClose}
+                activeOpacity={1}
+              />
+            </View>
+          </Modal>
+        )}
+      </>
     );
   }
 
@@ -205,46 +232,12 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     flex: 1,
     backgroundColor: 'black',
   },
-  permissionContainer: {
+  permissionFallback: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    padding: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
-  permissionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  permissionText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 30,
-    paddingHorizontal: 40,
-  },
-  permissionButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 30,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginBottom: 15,
-  },
-  permissionButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  closeButton: {
-    paddingHorizontal: 30,
-    paddingVertical: 14,
-  },
-  closeButtonText: {
-    color: colors.textSecondary,
-    fontSize: 16,
+  permissionFallbackOverlay: {
+    flex: 1,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

@@ -20,6 +20,7 @@ export interface Product {
   image_url?: string;
   created_at?: string;
   updated_at?: string;
+  deleted_at?: string | null;
   categories?: {
     id: string;
     name: string;
@@ -84,6 +85,8 @@ interface ProductContextType {
   updateProduct: (id: string, data: ProductFormData, imageFile?: string) => Promise<boolean>;
   deleteProduct: (id: string) => Promise<boolean>;
   adjustStock: (productId: string, type: "in" | "out" | "adjust", quantity: number, note?: string) => Promise<boolean>;
+  addProductToState: (product: Product) => void;
+  updateProductInState: (productId: string, updates: Partial<Product>) => void;
   
   // UI State
   viewMode: "list" | "grid";
@@ -161,7 +164,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
   // Search and Filter
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [sortBy, setSortBy] = useState("Name");
+  const [sortBy, setSortBy] = useState("Newest First");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   // Load initial data
@@ -176,16 +179,18 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     else setIsLoading(true);
     
     try {
-      // Fetch the exact count of all products
+      // Fetch the exact count of all active (non-deleted) products
       const { count } = await supabase
         .from('products')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null);
       
       // Store the total count
       setTotalProductCount(count || 0);
       
       // Fetch all products in a single query (works after running increase-max-rows.sql)
       // The limit is now 2000 which covers all our products
+      // Only fetch products that haven't been deleted (deleted_at is null)
       const { data, error } = await supabase
         .from('products')
         .select(`
@@ -195,6 +200,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
             name
           )
         `)
+        .is('deleted_at', null)  // Filter out soft-deleted products
         .order('created_at', { ascending: false })
         .limit(2000); // Explicitly set limit to 2000
       
@@ -256,7 +262,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  // Fetch single product by ID
+  // Fetch single product by ID (including archived products for viewing history)
   const fetchProductById = async (id: string): Promise<Product | null> => {
     try {
       const { data, error } = await supabase
@@ -272,6 +278,11 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         .single();
       
       if (error) throw error;
+      
+      // If product is deleted, show a warning
+      if (data?.deleted_at) {
+        showToast("This product has been archived", "info");
+      }
       
       return data;
     } catch (error: any) {
@@ -349,24 +360,53 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  // Delete product
+  // Delete product (soft delete - keeps history)
   const deleteProduct = async (id: string): Promise<boolean> => {
     try {
+      // Soft delete: set deleted_at timestamp instead of removing record
       const { error } = await supabase
         .from('products')
-        .delete()
+        .update({ 
+          deleted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
         .eq('id', id);
       
       if (error) throw error;
       
-      showToast("Product deleted successfully", "success");
-      await fetchProducts(); // Refresh products list
+      // Remove product from local state (it's soft deleted in DB)
+      setProducts(prevProducts => prevProducts.filter(p => p.id !== id));
+      setTotalProductCount(prev => Math.max(0, prev - 1));
+      
+      showToast("Product archived successfully", "success");
       return true;
     } catch (error: any) {
       console.error('Error deleting product:', error);
       showToast("Failed to delete product", "error");
       return false;
     }
+  };
+
+  // Add new product to state (for optimistic updates)
+  const addProductToState = (product: Product) => {
+    console.log('Adding product to state:', product);
+    // Add the new product at the beginning since we sort by created_at desc
+    setProducts(prevProducts => {
+      const newProducts = [product, ...prevProducts];
+      console.log('Updated products list length:', newProducts.length);
+      return newProducts;
+    });
+    // Update total count
+    setTotalProductCount(prev => prev + 1);
+  };
+
+  // Update product in state (for optimistic updates)
+  const updateProductInState = (productId: string, updates: Partial<Product>) => {
+    setProducts(prevProducts => 
+      prevProducts.map(p => 
+        p.id === productId ? { ...p, ...updates } : p
+      )
+    );
   };
 
   // Adjust stock
@@ -435,7 +475,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
         return b.price - a.price;
       case "Stock":
         return (b.stock_quantity || 0) - (a.stock_quantity || 0);
+      case "Newest First":
       default:
+        // Keep the original order (newest first) from the products array
+        // Products are already sorted by created_at desc from the database
         return 0;
     }
   });
@@ -467,6 +510,8 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     updateProduct,
     deleteProduct,
     adjustStock,
+    addProductToState,
+    updateProductInState,
     
     // UI State
     viewMode,

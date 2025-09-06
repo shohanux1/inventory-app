@@ -230,11 +230,11 @@ export default function Inventory() {
   };
 
   const handleStockIn = () => {
-    router.push("/stock-in");
+    router.push('/stock-in');
   };
 
   const handleStockOut = () => {
-    router.push("/stock-out");
+    router.push('/stock-out');
   };
 
   const handleTransfer = () => {
@@ -391,7 +391,7 @@ export default function Inventory() {
           </View>
           <TouchableOpacity 
             style={styles.historyButton}
-            onPress={() => router.push("/stock-history")}
+            onPress={() => router.push('/inventory/stock-history')}
           >
             <Ionicons name="time-outline" size={22} color={colors.primary} />
           </TouchableOpacity>

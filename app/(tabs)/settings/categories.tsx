@@ -14,10 +14,10 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Colors } from "../constants/Colors";
-import { useColorScheme } from "../hooks/useColorScheme";
-import { useToast } from "../contexts/ToastContext";
-import { supabase } from "../lib/supabase";
+import { Colors } from "../../../constants/Colors";
+import { useColorScheme } from "../../../hooks/useColorScheme";
+import { useToast } from "../../../contexts/ToastContext";
+import { supabase } from "../../../lib/supabase";
 
 interface Category {
   id: string;

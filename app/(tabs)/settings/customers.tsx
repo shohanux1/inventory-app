@@ -15,10 +15,10 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Colors } from "../constants/Colors";
-import { useColorScheme } from "../hooks/useColorScheme";
-import { useCustomers, Customer } from "../contexts/CustomerContext";
-import { useToast } from "../contexts/ToastContext";
+import { Colors } from "../../../constants/Colors";
+import { useColorScheme } from "../../../hooks/useColorScheme";
+import { useCustomers, Customer } from "../../../contexts/CustomerContext";
+import { useToast } from "../../../contexts/ToastContext";
 
 export default function Customers() {
   const router = useRouter();

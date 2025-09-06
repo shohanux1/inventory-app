@@ -59,7 +59,18 @@ export default function StockIn() {
 
   useEffect(() => {
     fetchProducts();
+    generateReferenceNumber();
   }, []);
+
+  const generateReferenceNumber = () => {
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const refNumber = `SI-${year}${month}${day}-${random}`;
+    setReference(refNumber);
+  };
 
   const filteredProducts = products.filter(
     (product) =>
@@ -162,33 +173,40 @@ export default function StockIn() {
                 throw new Error('Failed to create stock in batch');
               }
 
-              // Update product prices if specified
-              const priceUpdates = stockEntries.filter(entry => entry.newSellingPrice);
-              if (priceUpdates.length > 0) {
-                const { supabase } = await import('@/lib/supabase');
+              // Update product costs and prices
+              const { supabase } = await import('@/lib/supabase');
+              
+              for (const entry of stockEntries) {
+                const updates: any = {
+                  cost_price: entry.unitCost, // Always update cost price with the new stock cost
+                  updated_at: new Date().toISOString()
+                };
                 
-                for (const entry of priceUpdates) {
-                  const { error } = await supabase
-                    .from('products')
-                    .update({ 
-                      price: entry.newSellingPrice,
-                      updated_at: new Date().toISOString()
-                    })
-                    .eq('id', entry.productId);
-                  
-                  if (error) {
-                    console.error(`Failed to update price for product ${entry.productId}:`, error);
-                  }
+                // Also update selling price if specified
+                if (entry.newSellingPrice) {
+                  updates.price = entry.newSellingPrice;
                 }
                 
-                showToast(`Stock added and ${priceUpdates.length} price(s) updated`, "success");
+                const { error } = await supabase
+                  .from('products')
+                  .update(updates)
+                  .eq('id', entry.productId);
+                
+                if (error) {
+                  console.error(`Failed to update product ${entry.productId}:`, error);
+                }
+              }
+              
+              const priceUpdates = stockEntries.filter(entry => entry.newSellingPrice);
+              if (priceUpdates.length > 0) {
+                showToast(`Stock added with cost prices and ${priceUpdates.length} selling price(s) updated`, "success");
               } else {
-                showToast(`Successfully added stock for ${stockEntries.length} products`, "success");
+                showToast(`Successfully added stock and updated cost prices for ${stockEntries.length} products`, "success");
               }
               
               // Reset form and navigate back
               setStockEntries([]);
-              setReference("");
+              generateReferenceNumber(); // Generate new reference for next stock-in
               setSupplier("");
               setNotes("");
               router.back();
@@ -246,7 +264,6 @@ export default function StockIn() {
             showsVerticalScrollIndicator={false} 
             style={styles.content}
             keyboardShouldPersistTaps="handled"
-            scrollEnabled={!isFocused}
           >
           {/* Product Selection */}
           <View style={styles.section}>
@@ -278,14 +295,16 @@ export default function StockIn() {
               
               {/* Product Search Results Dropdown */}
               {isFocused && searchQuery.length > 0 && !selectedProduct && (
-                <View style={styles.productDropdown}>
+                <View style={[styles.productDropdown, Platform.OS === 'android' && styles.productDropdownAndroid]}>
                   <ScrollView 
                     style={styles.productDropdownScroll}
                     keyboardShouldPersistTaps="always"
                     nestedScrollEnabled={true}
+                    showsVerticalScrollIndicator={true}
+                    contentContainerStyle={styles.productDropdownContent}
                   >
                     {filteredProducts.length > 0 ? (
-                      filteredProducts.map((product) => (
+                      filteredProducts.slice(0, 30).map((product) => (
                         <TouchableOpacity
                           key={product.id}
                           style={styles.productDropdownItem}
@@ -373,6 +392,7 @@ export default function StockIn() {
                   keyboardType="decimal-pad"
                   placeholderTextColor={colors.textMuted}
                 />
+                <Text style={styles.inputHelper}>This will update product cost price</Text>
               </View>
             </View>
 
@@ -475,12 +495,22 @@ export default function StockIn() {
             <Text style={styles.sectionTitle}>Additional Information</Text>
             
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Reference Number</Text>
+              <View style={styles.labelWithAction}>
+                <Text style={styles.inputLabel}>Reference Number</Text>
+                <TouchableOpacity 
+                  onPress={generateReferenceNumber}
+                  style={styles.regenerateButton}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="refresh" size={14} color={colors.primary} />
+                  <Text style={styles.regenerateText}>New</Text>
+                </TouchableOpacity>
+              </View>
               <TextInput
-                style={styles.input}
-                placeholder="PO-001"
+                style={[styles.input, styles.readOnlyInput]}
+                placeholder="Auto-generated"
                 value={reference}
-                onChangeText={setReference}
+                editable={false}
                 placeholderTextColor={colors.textMuted}
               />
             </View>
@@ -619,24 +649,26 @@ const createStyles = (colors: typeof Colors.light) =>
       padding: 4,
     },
     productDropdown: {
-      position: "absolute",
-      top: "100%",
-      left: 0,
-      right: 0,
-      marginTop: 4,
+      marginTop: 8,
       backgroundColor: colors.surface,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.border,
-      maxHeight: 250,
+      maxHeight: 200,
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.1,
       shadowRadius: 4,
       elevation: 3,
     },
+    productDropdownAndroid: {
+      elevation: 5,
+    },
     productDropdownScroll: {
-      maxHeight: 250,
+      maxHeight: 200,
+    },
+    productDropdownContent: {
+      paddingVertical: 4,
     },
     productDropdownItem: {
       flexDirection: "row",
@@ -784,6 +816,36 @@ const createStyles = (colors: typeof Colors.light) =>
       fontWeight: "500",
       color: colors.textSecondary,
       marginBottom: 8,
+    },
+    inputHelper: {
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 4,
+      marginLeft: 2,
+    },
+    labelWithAction: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+    regenerateButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: colors.background,
+    },
+    regenerateText: {
+      fontSize: 12,
+      color: colors.primary,
+      fontWeight: "500",
+    },
+    readOnlyInput: {
+      backgroundColor: colors.backgroundDark,
+      color: colors.textSecondary,
     },
     input: {
       backgroundColor: colors.background,

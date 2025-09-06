@@ -1,4 +1,5 @@
 import { Colors } from "@/constants/Colors";
+import { EditProductModal } from "@/components/EditProductModal";
 import { useProducts, Product, StockHistory } from "@/contexts/ProductContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
@@ -39,6 +40,7 @@ export default function ProductDetails() {
   const [product, setProduct] = useState<Product | null>(null);
   const [stockHistory, setStockHistory] = useState<StockHistory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
   const [stockAdjustType, setStockAdjustType] = useState<"in" | "out" | "adjust">("in");
   const [stockQuantity, setStockQuantity] = useState("");
@@ -175,7 +177,7 @@ export default function ProductDetails() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Product Details</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerButton}>
+            <TouchableOpacity style={styles.headerButton} onPress={() => setShowEditModal(true)}>
               <Ionicons name="create-outline" size={20} color={colors.text} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerButton} onPress={handleDelete}>
@@ -510,6 +512,19 @@ export default function ProductDetails() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Product Modal */}
+      <EditProductModal
+        visible={showEditModal}
+        product={product}
+        onClose={() => setShowEditModal(false)}
+        onSuccess={() => {
+          // Reload product data after successful edit
+          loadProductData();
+          setShowEditModal(false);
+        }}
+        colors={colors}
+      />
     </SafeAreaView>
   );
 }

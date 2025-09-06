@@ -1,11 +1,10 @@
 import BarcodeScanner from "@/components/BarcodeScanner";
-import { ImageUpload, uploadProductImage } from "@/components/ImageUpload";
+import { EditProductModal } from "@/components/EditProductModal";
 import ProductCard from "@/components/ProductCard";
 import { SearchBarWithScanner } from "@/components/SearchBarWithScanner";
 import { Colors } from "@/constants/Colors";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Product, useProducts } from "@/contexts/ProductContext";
-import { useToast } from "@/contexts/ToastContext";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -21,9 +20,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 // Grid Item Component
@@ -116,7 +114,7 @@ const FilterModal: React.FC<FilterModalProps> = ({ visible, onClose, colors }) =
               contentContainerStyle={{ paddingHorizontal: 20 }}
               bounces={false}
             >
-              <View style={styles.filterOptions}>
+              <View style={styles.categoriesContent}>
                 {categories.map((category) => {
                   const isActive = selectedCategory === category.name;
                   const isAll = category.name === "All";
@@ -125,17 +123,17 @@ const FilterModal: React.FC<FilterModalProps> = ({ visible, onClose, colors }) =
                     <TouchableOpacity
                       key={category.name}
                       style={[
-                        styles.filterChip,
-                        isActive && styles.filterChipActive,
+                        styles.categoryChip,
+                        isActive && styles.categoryChipActive,
                       ]}
                       onPress={() => setSelectedCategory(category.name)}
                       activeOpacity={0.7}
                     >
-                      <View style={styles.filterChipContent}>
+                      <View style={styles.categoryChipContent}>
                         {!isAll && category.icon && (
                           <View style={[
-                            styles.filterIconWrapper,
-                            isActive && styles.filterIconWrapperActive
+                            styles.categoryIconWrapper,
+                            isActive && styles.categoryIconWrapperActive
                           ]}>
                             <Ionicons 
                               name={category.icon as any}
@@ -146,8 +144,8 @@ const FilterModal: React.FC<FilterModalProps> = ({ visible, onClose, colors }) =
                         )}
                         <Text
                           style={[
-                            styles.filterChipText,
-                            isActive && styles.filterChipTextActive,
+                            styles.categoryText,
+                            isActive && styles.categoryTextActive,
                           ]}
                           numberOfLines={1}
                         >
@@ -164,7 +162,7 @@ const FilterModal: React.FC<FilterModalProps> = ({ visible, onClose, colors }) =
           <View style={styles.filterSection}>
             <Text style={styles.filterLabel}>Sort By</Text>
             <View style={styles.sortOptions}>
-              {["Name", "Price: Low to High", "Price: High to Low", "Stock"].map((sort) => (
+              {["Newest First", "Name", "Price: Low to High", "Price: High to Low", "Stock"].map((sort) => (
                 <TouchableOpacity
                   key={sort}
                   style={styles.sortOption}
@@ -189,301 +187,7 @@ const FilterModal: React.FC<FilterModalProps> = ({ visible, onClose, colors }) =
 };
 
 // Edit Product Modal Component
-interface EditModalProps {
-  visible: boolean;
-  product: Product | null;
-  onClose: () => void;
-  colors: typeof Colors.light;
-}
 
-const EditProductModal: React.FC<EditModalProps> = ({ visible, product, onClose, colors }) => {
-  const styles = createStyles(colors);
-  const { showToast } = useToast();
-  const { updateProduct, categories } = useProducts();
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({
-    name: "",
-    sku: "",
-    barcode: "",
-    description: "",
-    price: "",
-    costPrice: "",
-    stock: "",
-    minStock: "",
-    category: "",
-    categoryId: "",
-    imageUrl: "",
-  });
-
-  React.useEffect(() => {
-    if (product) {
-      setEditForm({
-        name: product.name || "",
-        sku: product.sku || "",
-        barcode: product.barcode || "",
-        description: product.description || "",
-        price: product.price?.toString() || "",
-        costPrice: product.cost_price?.toString() || "",
-        stock: product.stock_quantity?.toString() || "",
-        minStock: product.min_stock_level?.toString() || "",
-        category: product.categories?.name || product.category || "",
-        categoryId: product.category_id || "",
-        imageUrl: product.image_url || "",
-      });
-      setSelectedImage(null);
-    }
-  }, [product]);
-
-  const handleSave = async () => {
-    if (!product || !editForm.name || !editForm.sku || !editForm.price) {
-      showToast("Please fill in all required fields", "warning");
-      return;
-    }
-
-    setIsLoading(true);
-    
-    // Upload image if selected
-    let imageUrl = editForm.imageUrl;
-    if (selectedImage) {
-      const uploadedUrl = await uploadProductImage(selectedImage, editForm.sku, (error) => {
-        showToast(error, 'error');
-      });
-      if (uploadedUrl) {
-        imageUrl = uploadedUrl;
-      }
-    }
-
-    const success = await updateProduct(product.id, {
-      ...editForm,
-      imageUrl
-    }, selectedImage || undefined);
-
-    setIsLoading(false);
-    if (success) {
-      onClose();
-    }
-  };
-
-  if (!product) return null;
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.editModalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Edit Product</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={styles.editForm}>
-              {/* Basic Information */}
-              <View style={[styles.sectionHeader, { marginTop: 4 }]}>
-                <Text style={styles.sectionTitle}>Basic Information</Text>
-              </View>
-              
-              <View style={styles.formGroup}>
-                <View style={styles.labelContainer}>
-                  <Ionicons name="pricetag-outline" size={16} color={colors.textSecondary} />
-                  <Text style={styles.formLabel}>Product Name *</Text>
-                </View>
-                <TextInput
-                  style={styles.formInput}
-                  value={editForm.name}
-                  onChangeText={(text) => setEditForm({...editForm, name: text})}
-                  placeholder="Enter product name"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-                  <View style={styles.labelContainer}>
-                    <Ionicons name="code-outline" size={16} color={colors.textSecondary} />
-                    <Text style={styles.formLabel}>SKU *</Text>
-                  </View>
-                  <TextInput
-                    style={styles.formInput}
-                    value={editForm.sku}
-                    onChangeText={(text) => setEditForm({...editForm, sku: text})}
-                    placeholder="Enter SKU"
-                    placeholderTextColor={colors.textMuted}
-                  />
-                </View>
-
-                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-                  <View style={styles.labelContainer}>
-                    <Ionicons name="barcode-outline" size={16} color={colors.textSecondary} />
-                    <Text style={styles.formLabel}>Barcode</Text>
-                  </View>
-                  <TextInput
-                    style={styles.formInput}
-                    value={editForm.barcode}
-                    onChangeText={(text) => setEditForm({...editForm, barcode: text})}
-                    placeholder="Enter barcode"
-                    placeholderTextColor={colors.textMuted}
-                  />
-                </View>
-              </View>
-
-              {/* Pricing & Stock */}
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Pricing & Stock</Text>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-                  <View style={styles.labelContainer}>
-                    <Ionicons name="cash-outline" size={16} color={colors.textSecondary} />
-                    <Text style={styles.formLabel}>Selling Price *</Text>
-                  </View>
-                  <TextInput
-                    style={styles.formInput}
-                    value={editForm.price}
-                    onChangeText={(text) => setEditForm({...editForm, price: text})}
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="decimal-pad"
-                  />
-                </View>
-
-                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-                  <View style={styles.labelContainer}>
-                    <Ionicons name="pricetags-outline" size={16} color={colors.textSecondary} />
-                    <Text style={styles.formLabel}>Cost Price</Text>
-                  </View>
-                  <TextInput
-                    style={styles.formInput}
-                    value={editForm.costPrice}
-                    onChangeText={(text) => setEditForm({...editForm, costPrice: text})}
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="decimal-pad"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-                  <View style={styles.labelContainer}>
-                    <Ionicons name="cube-outline" size={16} color={colors.textSecondary} />
-                    <Text style={styles.formLabel}>Stock Quantity</Text>
-                  </View>
-                  <TextInput
-                    style={styles.formInput}
-                    value={editForm.stock}
-                    onChangeText={(text) => setEditForm({...editForm, stock: text})}
-                    placeholder="0"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-                  <View style={styles.labelContainer}>
-                    <Ionicons name="alert-circle-outline" size={16} color={colors.textSecondary} />
-                    <Text style={styles.formLabel}>Min Stock Alert</Text>
-                  </View>
-                  <TextInput
-                    style={styles.formInput}
-                    value={editForm.minStock}
-                    onChangeText={(text) => setEditForm({...editForm, minStock: text})}
-                    placeholder="0"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              {/* Category */}
-              <View style={styles.formGroup}>
-                <View style={styles.labelContainer}>
-                  <Ionicons name="grid-outline" size={16} color={colors.textSecondary} />
-                  <Text style={styles.formLabel}>Category</Text>
-                </View>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.categorySelector}
-                >
-                  {categories.filter(cat => cat.name !== "All").map((cat) => (
-                    <TouchableOpacity
-                      key={cat.name}
-                      style={[
-                        styles.categoryOption,
-                        editForm.category === cat.name && styles.categoryOptionActive,
-                      ]}
-                      onPress={() => {
-                        setEditForm({
-                          ...editForm, 
-                          category: cat.name,
-                          categoryId: cat.id || ""
-                        });
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.categoryOptionText,
-                          editForm.category === cat.name && styles.categoryOptionTextActive,
-                        ]}
-                      >
-                        {cat.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              {/* Product Image */}
-              <View style={styles.formGroup}>
-                <View style={styles.labelContainer}>
-                  <Ionicons name="image-outline" size={16} color={colors.textSecondary} />
-                  <Text style={styles.formLabel}>Product Image</Text>
-                </View>
-                
-                <ImageUpload
-                  imageUrl={editForm.imageUrl}
-                  onImageSelected={setSelectedImage}
-                  productSku={editForm.sku}
-                  colors={colors}
-                  disabled={isLoading}
-                />
-              </View>
-            </View>
-          </ScrollView>
-
-          <View style={styles.modalActions}>
-            <TouchableOpacity 
-              style={styles.cancelButton}
-              onPress={onClose}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.saveButton, isLoading && { opacity: 0.6 }]}
-              onPress={handleSave}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.saveButtonText}>Save Changes</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
 
 // Main Products Component
 export default function Products() {
@@ -527,7 +231,7 @@ export default function Products() {
   };
 
   const handleAddProduct = () => {
-    router.push("/add-product");
+    router.push('/products/add-product');
   };
 
 
@@ -688,6 +392,11 @@ export default function Products() {
           setEditModalVisible(false);
           setSelectedProduct(null);
         }}
+        onSuccess={() => {
+          // Product list automatically updates due to context
+          setEditModalVisible(false);
+          setSelectedProduct(null);
+        }}
         colors={colors}
       />
 
@@ -755,20 +464,15 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     alignItems: 'center',
   },
   categoryChip: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 12,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderLight,
     marginRight: 10,
     height: 36,
     justifyContent: 'center',
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.02,
-    shadowRadius: 2,
-    elevation: 1,
   },
   categoryChipContent: {
     flexDirection: 'row',
@@ -776,20 +480,19 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     gap: 6,
   },
   categoryChipActive: {
-    backgroundColor: colors.primary + '10',
+    backgroundColor: colors.primary + '15',
     borderColor: colors.primary,
-    borderWidth: 1.5,
   },
   categoryIconWrapper: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 6,
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
   categoryIconWrapperActive: {
-    backgroundColor: colors.primary + '20',
+    backgroundColor: colors.primary + '15',
   },
   categoryText: {
     fontSize: 13,
@@ -1026,114 +729,6 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   },
   applyButtonText: {
     fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  editModalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: Platform.OS === "ios" ? 34 : 20,
-    maxHeight: "80%",
-  },
-  editForm: {
-    paddingVertical: 8,
-  },
-  formGroup: {
-    marginBottom: 16,
-  },
-  labelContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 8,
-  },
-  formLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: colors.text,
-  },
-  formInput: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: colors.text,
-  },
-  formRow: {
-    flexDirection: "row",
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    marginTop: 16,
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  categorySelector: {
-    maxHeight: 40,
-  },
-  categoryOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: 8,
-  },
-  categoryOptionActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  categoryOptionText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: colors.textSecondary,
-  },
-  categoryOptionTextActive: {
-    color: "#FFFFFF",
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-  },
-  cancelButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  saveButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-  },
-  saveButtonText: {
-    fontSize: 15,
     fontWeight: "600",
     color: "#FFFFFF",
   },

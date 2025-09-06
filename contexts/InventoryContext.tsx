@@ -45,6 +45,8 @@ export interface InventoryAlert {
 export interface InventoryStats {
   totalProducts: number;
   totalValue: number;
+  todaySales: number;
+  todayProfit: number;
   lowStockItems: number;
   outOfStockItems: number;
   overstockItems: number;
@@ -531,6 +533,21 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
         (p.stock_quantity || 0) > (p.min_stock_level || 10) * 5
       ).length;
 
+      // Get today's sales with profit calculation
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const { data: todaySalesData } = await supabase
+        .from('sales')
+        .select('total_amount, total_profit')
+        .gte('created_at', today.toISOString())
+        .lt('created_at', tomorrow.toISOString());
+      
+      const todaySales = todaySalesData?.reduce((sum, sale) => sum + sale.total_amount, 0) || 0;
+      const todayProfit = todaySalesData?.reduce((sum, sale) => sum + (sale.total_profit || 0), 0) || 0;
+
       // Get recent movements count
       const { count: movementsCount } = await supabase
         .from('stock_movements')
@@ -575,6 +592,8 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
       setStats({
         totalProducts,
         totalValue,
+        todaySales,
+        todayProfit,
         lowStockItems,
         outOfStockItems,
         overstockItems,

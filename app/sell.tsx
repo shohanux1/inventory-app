@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -117,28 +117,134 @@ export default function Sell() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [convertChangeToPoints, setConvertChangeToPoints] = useState(false);
   const [changeAmount, setChangeAmount] = useState(0);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+
+  // Debounce timer ref
+  const searchDebounceTimer = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     fetchProducts();
     fetchCustomers();
   }, []);
 
-  // Filter products based on search query
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (product.barcode && product.barcode.includes(searchQuery)) ||
-    (product.categories?.name && product.categories.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Debounce search query
+  useEffect(() => {
+    if (searchDebounceTimer.current) {
+      clearTimeout(searchDebounceTimer.current);
+    }
+    
+    searchDebounceTimer.current = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 200); // 200ms debounce delay
+
+    return () => {
+      if (searchDebounceTimer.current) {
+        clearTimeout(searchDebounceTimer.current);
+      }
+    };
+  }, [searchQuery]);
+
+  // Create search index for faster lookups
+  const productSearchIndex = useMemo(() => {
+    const index = new Map<string, Product[]>();
+    
+    products.forEach(product => {
+      // Index by name tokens
+      const nameTokens = product.name.toLowerCase().split(' ');
+      nameTokens.forEach(token => {
+        if (!index.has(token)) {
+          index.set(token, []);
+        }
+        index.get(token)?.push(product);
+      });
+      
+      // Index by SKU
+      const skuLower = product.sku.toLowerCase();
+      if (!index.has(skuLower)) {
+        index.set(skuLower, []);
+      }
+      index.get(skuLower)?.push(product);
+      
+      // Index by barcode
+      if (product.barcode) {
+        if (!index.has(product.barcode)) {
+          index.set(product.barcode, []);
+        }
+        index.get(product.barcode)?.push(product);
+      }
+    });
+    
+    return index;
+  }, [products]);
+
+  // Optimized product filtering with memoization
+  const filteredProducts = useMemo(() => {
+    if (!debouncedSearchQuery || debouncedSearchQuery.length === 0) {
+      return [];
+    }
+
+    const query = debouncedSearchQuery.toLowerCase();
+    const searchTokens = query.split(' ').filter(t => t.length > 0);
+    
+    // For very short queries, use simple filtering
+    if (query.length <= 2) {
+      return products
+        .filter(product => 
+          product.name.toLowerCase().startsWith(query) ||
+          product.sku.toLowerCase().startsWith(query)
+        )
+        .slice(0, 15); // Limit results
+    }
+
+    // Use Set to avoid duplicates
+    const resultSet = new Set<Product>();
+    
+    // Quick exact matches first
+    searchTokens.forEach(token => {
+      const exactMatches = productSearchIndex.get(token) || [];
+      exactMatches.forEach(p => resultSet.add(p));
+    });
+
+    // If we have enough exact matches, return early
+    if (resultSet.size >= 10) {
+      return Array.from(resultSet).slice(0, 15);
+    }
+
+    // Fallback to partial matching for remaining items
+    const results = products.filter(product => {
+      // Skip if already in results
+      if (resultSet.has(product)) return false;
+      
+      const productName = product.name.toLowerCase();
+      const productSku = product.sku.toLowerCase();
+      
+      // Check if all search tokens are found
+      const allTokensMatch = searchTokens.every(token => 
+        productName.includes(token) || 
+        productSku.includes(token) ||
+        (product.barcode && product.barcode.includes(token))
+      );
+      
+      return allTokensMatch;
+    });
+
+    // Combine and limit results
+    return [...Array.from(resultSet), ...results].slice(0, 15);
+  }, [debouncedSearchQuery, products, productSearchIndex]);
 
   // Get all customers including walk-in
-  const allCustomers = [WALK_IN_CUSTOMER, ...customers];
+  const allCustomers = useMemo(() => [WALK_IN_CUSTOMER, ...customers], [customers]);
   
-  // Filter customers based on search
-  const filteredCustomers = allCustomers.filter(customer =>
-    customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-    customer.phone.includes(customerSearch)
-  );
+  // Filter customers based on search with memoization
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch) return allCustomers;
+    
+    const search = customerSearch.toLowerCase();
+    return allCustomers.filter(customer =>
+      customer.name.toLowerCase().includes(search) ||
+      customer.phone.includes(search)
+    );
+  }, [allCustomers, customerSearch]);
 
   const addToCart = (product: Product) => {
     // Check stock availability
@@ -667,7 +773,7 @@ export default function Sell() {
       </ScrollView>
 
       {/* Checkout Button */}
-      {cartItems.length > 0 && (
+      {cartItems.length > 0 && !showPaymentModal && (
         <View style={styles.checkoutContainer}>
           <TouchableOpacity style={styles.checkoutButton} onPress={handleCheckout}>
             <Text style={styles.checkoutButtonText}>
@@ -699,12 +805,13 @@ export default function Sell() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         >
-          <ScrollView 
-            contentContainerStyle={styles.paymentModalScroll}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.paymentModal}>
+          <View style={styles.paymentModal}>
+            <ScrollView 
+              contentContainerStyle={styles.paymentModalScroll}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+            >
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Payment</Text>
@@ -846,7 +953,9 @@ export default function Sell() {
               </View>
             )}
 
-            {/* Action Buttons */}
+            </ScrollView>
+            
+            {/* Action Buttons - Outside ScrollView */}
             <View style={styles.modalActions}>
               <TouchableOpacity 
                 style={styles.cancelButton}
@@ -865,7 +974,6 @@ export default function Sell() {
               </TouchableOpacity>
             </View>
           </View>
-          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -1311,7 +1419,7 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   },
   paymentModalScroll: {
     flexGrow: 1,
-    justifyContent: "flex-end",
+    paddingBottom: 20,
   },
   paymentModal: {
     backgroundColor: colors.surface,
@@ -1319,6 +1427,9 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     borderTopRightRadius: 24,
     paddingBottom: Platform.OS === "ios" ? 34 : 20,
     maxHeight: Platform.OS === "android" ? "85%" : "90%",
+    overflow: 'hidden',
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   modalHeader: {
     flexDirection: "row",
@@ -1545,6 +1656,11 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingHorizontal: 20,
+    paddingVertical: 20,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 30,
+    backgroundColor: colors.surface,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
   },
   cancelButton: {
     flex: 1,

@@ -64,11 +64,6 @@ export default function Welcome() {
     },
   ];
 
-  const stats = [
-    { value: "50K+", label: "Stores" },
-    { value: "10M+", label: "Products" },
-    { value: "99.9%", label: "Uptime" },
-  ];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -122,18 +117,8 @@ export default function Welcome() {
           <Text style={styles.welcomeText}>WELCOME TO</Text>
           <Text style={styles.appName}>SwiftPOS</Text>
           <Text style={styles.tagline}>
-            Transform your business with the most{"\n"}powerful inventory system
+            Transform your business with{"\n"}powerful inventory management
           </Text>
-
-          {/* Stats Row */}
-          <View style={styles.statsRow}>
-            {stats.map((stat, index) => (
-              <View key={index} style={styles.statItem}>
-                <Text style={styles.statValue}>{stat.value}</Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
         </Animated.View>
 
         {/* Features Section */}
@@ -146,7 +131,6 @@ export default function Welcome() {
             },
           ]}
         >
-          <Text style={styles.sectionTitle}>Why choose SwiftPOS?</Text>
           <View style={styles.featuresGrid}>
             {features.map((feature, index) => (
               <Animated.View
@@ -182,15 +166,9 @@ export default function Welcome() {
           </View>
         </Animated.View>
 
-        {/* Spacer */}
-        <View style={styles.spacer} />
 
         {/* CTA Section */}
         <View style={styles.ctaSection}>
-          <View style={styles.offerBadge}>
-            <Ionicons name="gift-outline" size={16} color="#059669" />
-            <Text style={styles.offerText}>14-day free trial • No credit card required</Text>
-          </View>
 
           <TouchableOpacity
             style={styles.primaryButton}
@@ -227,8 +205,6 @@ export default function Welcome() {
               <Text style={styles.demoButtonText}>Demo</Text>
             </TouchableOpacity>
           </View>
-
-          <Text style={styles.footerText}>Trusted by thousands of businesses worldwide</Text>
         </View>
       </View>
     </SafeAreaView>
@@ -243,6 +219,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    justifyContent: "center",
   },
   backgroundDecoration: {
     position: "absolute",
@@ -280,11 +257,10 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     alignItems: "center",
-    paddingTop: Platform.OS === "ios" ? 20 : 40,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   logoContainer: {
-    marginBottom: 16,
+    marginBottom: 12,
     position: "relative",
   },
   logoGradient: {
@@ -293,11 +269,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#3B82F6",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#3B82F6",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
   },
   logoBadge: {
     position: "absolute",
@@ -321,19 +303,19 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   appName: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: "800",
     color: "#111827",
     letterSpacing: -1,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   tagline: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#6B7280",
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 18,
     fontWeight: "400",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   statsRow: {
     flexDirection: "row",
@@ -357,7 +339,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   featuresSection: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 13,
@@ -377,12 +359,18 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#F3F4F6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.02,
-    shadowRadius: 3,
-    elevation: 1,
+    borderColor: Platform.OS === "android" ? "#E5E7EB" : "#F3F4F6",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.02,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 0,
+      },
+    }),
   },
   featureIcon: {
     width: 36,
@@ -409,7 +397,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   ctaSection: {
-    paddingBottom: Platform.OS === "ios" ? 16 : 24,
+    marginTop: 20,
   },
   offerBadge: {
     flexDirection: "row",
@@ -431,11 +419,17 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 12,
     overflow: "hidden",
-    shadowColor: "#3B82F6",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#3B82F6",
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   buttonGradient: {
     flexDirection: "row",

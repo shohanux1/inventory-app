@@ -14,11 +14,11 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Colors } from "../constants/Colors";
-import { useColorScheme } from "../hooks/useColorScheme";
-import { useInventory } from "../contexts/InventoryContext";
-import { useProducts } from "../contexts/ProductContext";
-import { useCurrency } from "../contexts/CurrencyContext";
+import { Colors } from "../../../constants/Colors";
+import { useColorScheme } from "../../../hooks/useColorScheme";
+import { useInventory } from "../../../contexts/InventoryContext";
+import { useProducts } from "../../../contexts/ProductContext";
+import { useCurrency } from "../../../contexts/CurrencyContext";
 
 export default function StockHistory() {
   const router = useRouter();
@@ -191,7 +191,7 @@ export default function StockHistory() {
       <TouchableOpacity 
         style={styles.batchCard}
         activeOpacity={0.7}
-        onPress={() => router.push(`/stock-history-details?id=${item.id}`)}
+        onPress={() => router.push(`/inventory/stock-history-details?id=${item.id}`)}
       >
         <View style={[styles.batchIcon, { backgroundColor: `${batchColor}15` }]}>
           <Ionicons name={icon as any} size={20} color={batchColor} />
@@ -482,6 +482,7 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 8,
     gap: 12,
+    alignItems: "center",
   },
   searchBar: {
     flex: 1,
@@ -490,7 +491,7 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    height: 46,
     borderWidth: 1,
     borderColor: colors.borderLight,
   },
@@ -501,8 +502,8 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     color: colors.text,
   },
   filterButton: {
-    width: 48,
-    height: 48,
+    width: 46,
+    height: 46,
     borderRadius: 12,
     backgroundColor: colors.surface,
     justifyContent: "center",

@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  ScrollView,
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,16 +46,22 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={styles.content}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => router.back()}
+      <View style={styles.content}>
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
           >
-            <Ionicons name="arrow-back" size={24} color="#3B82F6" />
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#3B82F6" />
           </TouchableOpacity>
 
           <View style={styles.headerSection}>
@@ -104,16 +111,19 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            <Link href="/(auth)/signup" asChild>
-              <TouchableOpacity>
-                <Text style={styles.footerLink}>Sign up</Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+        
+        {/* Footer stays at bottom, outside KeyboardAvoidingView */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Don't have an account? </Text>
+          <Link href="/(auth)/signup" asChild>
+            <TouchableOpacity>
+              <Text style={styles.footerLink}>Sign up</Text>
+            </TouchableOpacity>
+          </Link>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -152,6 +162,9 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '400',
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   formSection: {
     flex: 1,
   },
@@ -189,6 +202,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 24,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
   },
   footerText: {
     fontSize: 14,

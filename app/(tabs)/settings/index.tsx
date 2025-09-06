@@ -1,24 +1,24 @@
-import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  ScrollView, 
-  Switch, 
-  SafeAreaView, 
-  Platform,
-  Modal,
-  TextInput,
-  FlatList
-} from "react-native";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Colors } from "../../constants/Colors";
-import { useColorScheme } from "../../hooks/useColorScheme";
-import { useAuth } from "../../contexts/AuthContext";
-import { useToast } from "../../contexts/ToastContext";
-import { useCurrency, CURRENCIES } from "../../contexts/CurrencyContext";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  FlatList,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from "react-native";
+import { Colors } from "../../../constants/Colors";
+import { useAuth } from "../../../contexts/AuthContext";
+import { CURRENCIES, useCurrency } from "../../../contexts/CurrencyContext";
+import { useToast } from "../../../contexts/ToastContext";
+import { useColorScheme } from "../../../hooks/useColorScheme";
 
 interface SettingItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -149,7 +149,7 @@ export default function Settings() {
             </View>
             <TouchableOpacity 
               style={styles.editButton}
-              onPress={() => router.push("/profile")}
+              onPress={() => router.push('/settings/profile')}
             >
               <Ionicons name="create-outline" size={20} color={colors.primary} />
             </TouchableOpacity>
@@ -178,28 +178,35 @@ export default function Settings() {
               icon="grid-outline"
               title="Categories"
               subtitle="Manage product categories"
-              onPress={() => router.push("/categories")}
+              onPress={() => router.push('/settings/categories')}
+              colors={colors}
+            />
+            <SettingItem
+              icon="archive-outline"
+              title="Archived Products"
+              subtitle="View and restore deleted products"
+              onPress={() => router.push('/(tabs)/settings/archived-products')}
               colors={colors}
             />
             <SettingItem
               icon="pricetag-outline"
               title="Brands"
               subtitle="Manage product brands"
-              onPress={() => router.push("/brands")}
+              onPress={() => router.push('/settings/brands')}
               colors={colors}
             />
             <SettingItem
               icon="people-outline"
               title="Customers"
               subtitle="Manage customer database"
-              onPress={() => router.push("/customers")}
+              onPress={() => router.push('/settings/customers')}
               colors={colors}
             />
             <SettingItem
               icon="receipt-outline"
               title="Sales History"
               subtitle="View all sales and receipts"
-              onPress={() => router.push("/sales-history")}
+              onPress={() => router.push('/settings/sales-history')}
               colors={colors}
             />
           </View>
@@ -213,14 +220,14 @@ export default function Settings() {
               icon="person-outline"
               title="Personal Information"
               subtitle={`User ID: ${user?.id?.slice(0, 8)}...` || "Update your details"}
-              onPress={() => router.push("/profile")}
+              onPress={() => router.push('/settings/profile')}
               colors={colors}
             />
             <SettingItem
               icon="lock-closed-outline"
               title="Security"
               subtitle="Password and authentication"
-              onPress={() => router.push("/security")}
+              onPress={() => router.push('/settings/security')}
               colors={colors}
             />
           </View>
@@ -234,21 +241,21 @@ export default function Settings() {
               icon="help-circle-outline"
               title="Help & Support"
               subtitle="Get help with the app"
-              onPress={() => router.push("/support")}
+              onPress={() => router.push('/settings/support')}
               colors={colors}
             />
             <SettingItem
               icon="document-text-outline"
               title="Privacy Policy"
               subtitle="How we handle your data"
-              onPress={() => router.push("/privacy")}
+              onPress={() => router.push('/settings/privacy')}
               colors={colors}
             />
             <SettingItem
               icon="shield-checkmark-outline"
               title="Terms of Service"
               subtitle="Terms and conditions"
-              onPress={() => router.push("/terms")}
+              onPress={() => router.push('/settings/terms')}
               colors={colors}
             />
           </View>

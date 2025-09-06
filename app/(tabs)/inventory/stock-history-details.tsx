@@ -16,12 +16,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Colors } from "../constants/Colors";
-import { useColorScheme } from "../hooks/useColorScheme";
-import { useCurrency } from "../contexts/CurrencyContext";
-import { supabase } from "../lib/supabase";
-import { useToast } from "../contexts/ToastContext";
-import { BarcodeSticker } from "../components/BarcodeSticker";
+import { Colors } from "../../../constants/Colors";
+import { useColorScheme } from "../../../hooks/useColorScheme";
+import { useCurrency } from "../../../contexts/CurrencyContext";
+import { supabase } from "../../../lib/supabase";
+import { useToast } from "../../../contexts/ToastContext";
+import { BarcodeSticker } from "../../../components/BarcodeSticker";
 import ViewShot from "react-native-view-shot";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system";

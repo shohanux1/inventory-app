@@ -307,8 +307,8 @@ export default function Dashboard() {
   // Calculate dynamic values
   const totalProducts = totalProductCount || products.length; // Use actual count from DB
   const lowStockCount = stats?.lowStockItems || 0;
-  const categoriesCount = categories.length - 1; // Subtract "All" category
-  const totalValue = stats?.totalValue || 0;
+  const todaySales = stats?.todaySales || 0;
+  const todayProfit = stats?.todayProfit || 0;
 
   // Calculate percentage changes (mock data for now, can be calculated from historical data)
   const calculateChange = () => {
@@ -319,10 +319,10 @@ export default function Dashboard() {
       productsTrend: "up" as const,
       lowStock: lowStockCount < 5 ? "-8%" : "+3%",
       lowStockTrend: lowStockCount < 5 ? "down" as const : "up" as const,
-      categories: categoriesCount > 3 ? "+5%" : "+2%",
-      categoriesTrend: "up" as const,
-      value: totalValue > 50000 ? "+18%" : "+10%",
-      valueTrend: "up" as const,
+      sales: todaySales > 1000 ? "+25%" : "+10%",
+      salesTrend: "up" as const,
+      profit: todayProfit > 500 ? "+30%" : "+15%",
+      profitTrend: "up" as const,
     };
   };
 
@@ -446,19 +446,19 @@ export default function Dashboard() {
             colors={colors}
           />
           <MetricCard
-            label="Categories"
-            value={categoriesCount.toString()}
-            change={changes.categories}
-            trending={changes.categoriesTrend}
-            icon="grid-outline"
+            label="Today's Profit"
+            value={formatAmount(todayProfit)}
+            change={changes.profit}
+            trending={changes.profitTrend}
+            icon="trending-up-outline"
             colors={colors}
           />
           <MetricCard
-            label="Total Value"
-            value={formatAmount(totalValue)}
-            change={changes.value}
-            trending={changes.valueTrend}
-            icon="wallet-outline"
+            label="Today's Sales"
+            value={formatAmount(todaySales)}
+            change={changes.sales}
+            trending={changes.salesTrend}
+            icon="cash-outline"
             colors={colors}
           />
         </View>
@@ -472,19 +472,19 @@ export default function Dashboard() {
             <ActionButton
               label="Add Product"
               icon="add-circle-outline"
-              onPress={() => router.push("/add-product")}
+              onPress={() => router.push('/products/add-product')}
               colors={colors}
             />
             <ActionButton
               label="Stock In"
               icon="arrow-down-circle-outline"
-              onPress={() => router.push("/stock-in")}
+              onPress={() => router.push('/stock-in')}
               colors={colors}
             />
             <ActionButton
               label="Stock Out"
               icon="arrow-up-circle-outline"
-              onPress={() => router.push("/stock-out")}
+              onPress={() => router.push('/stock-out')}
               colors={colors}
             />
             <ActionButton
@@ -500,7 +500,7 @@ export default function Dashboard() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Low Stock Alert</Text>
-            <TouchableOpacity onPress={() => router.push("/(tabs)/inventory")}>
+            <TouchableOpacity onPress={() => router.push('/inventory')}>
               <Text style={styles.viewAll}>View all</Text>
             </TouchableOpacity>
           </View>
@@ -513,7 +513,7 @@ export default function Dashboard() {
                       styles.alertDot,
                       (product.stock_quantity || 0) <= 5 && styles.alertDotWarning
                     ]} />
-                    <Text style={styles.alertText}>
+                    <Text style={styles.alertText} numberOfLines={1} ellipsizeMode="tail">
                       {product.name} - {product.stock_quantity || 0} units left
                     </Text>
                   </View>
@@ -529,7 +529,7 @@ export default function Dashboard() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Activity</Text>
-            <TouchableOpacity onPress={() => router.push("/sales-history")}>
+            <TouchableOpacity onPress={() => router.push('/settings/sales-history')}>
               <Text style={styles.viewAll}>View all</Text>
             </TouchableOpacity>
           </View>
@@ -701,6 +701,7 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    paddingVertical: 4,
   },
   alertDot: {
     width: 8,
@@ -714,6 +715,8 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
   alertText: {
     fontSize: 14,
     color: colors.textSecondary,
+    flex: 1,
+    paddingRight: 8,
   },
   recentList: {
     gap: 12,

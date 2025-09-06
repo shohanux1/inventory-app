@@ -14,12 +14,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Colors } from "../constants/Colors";
-import { useColorScheme } from "../hooks/useColorScheme";
-import { useSales } from "../hooks/useSales";
-import { ReceiptData } from "../services/printer-expo";
-import { ReceiptSuccessModal } from "../components/ReceiptSuccessModal";
-import { useCurrency } from "../contexts/CurrencyContext";
+import { Colors } from "../../../constants/Colors";
+import { useColorScheme } from "../../../hooks/useColorScheme";
+import { useSales } from "../../../hooks/useSales";
+import { ReceiptData } from "../../../services/printer-expo";
+import { ReceiptSuccessModal } from "../../../components/ReceiptSuccessModal";
+import { useCurrency } from "../../../contexts/CurrencyContext";
 
 export default function SalesHistory() {
   const router = useRouter();
@@ -45,6 +45,7 @@ export default function SalesHistory() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [receiptDataForPrint, setReceiptDataForPrint] = useState<ReceiptData | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   
   const { formatAmount } = useCurrency();
 
@@ -222,7 +223,9 @@ export default function SalesHistory() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Sales History</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity onPress={() => setShowFilters(!showFilters)} style={styles.filterButton}>
+          <Ionicons name="filter" size={24} color={colors.primary} />
+        </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
@@ -250,12 +253,13 @@ export default function SalesHistory() {
       </View>
 
       {/* Filters */}
-      <View style={styles.filtersSection}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersScroll}
-        >
+      {showFilters && (
+        <View style={styles.filtersSection}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filtersScroll}
+          >
           {/* Date Filters */}
           {(["all", "today", "week", "month"] as const).map((filter) => (
             <TouchableOpacity
@@ -304,6 +308,7 @@ export default function SalesHistory() {
           ))}
         </ScrollView>
       </View>
+      )}
 
       {/* Stats Cards */}
       <View style={styles.statsSection}>
@@ -500,12 +505,16 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: Platform.OS === "android" ? 40 : 10,
+    paddingBottom: 16,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
   backButton: {
+    padding: 4,
+  },
+  filterButton: {
     padding: 4,
   },
   headerTitle: {

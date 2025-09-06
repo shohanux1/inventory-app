@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from "expo-router";
 import { Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/Colors';
 import { useColorScheme } from '../../hooks/useColorScheme';
 
@@ -9,7 +10,8 @@ export default function TabLayout() {
   const colors = Colors[colorScheme];
 
   return (
-    <Tabs
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['bottom']}>
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
@@ -20,15 +22,11 @@ export default function TabLayout() {
           borderTopWidth: 1,
           paddingBottom: 8,
           paddingTop: 8,
-          height: Platform.OS === 'android' ? 80 : 88,
-          shadowColor: '#000',
-          shadowOffset: {
-            width: 0,
-            height: -2,
-          },
-          shadowOpacity: Platform.OS === 'android' ? 0.02 : 0.05,
-          shadowRadius: Platform.OS === 'android' ? 2 : 4,
-          elevation: Platform.OS === 'android' ? 2 : 8, // Very low elevation for Android
+          height: Platform.OS === 'android' ? 70 : 88,
+          elevation: 0,
+          shadowOpacity: 0,
+          shadowOffset: { height: 0, width: 0 },
+          shadowRadius: 0,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -97,5 +95,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </SafeAreaView>
   );
 }

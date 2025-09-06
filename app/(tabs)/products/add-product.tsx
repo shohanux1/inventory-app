@@ -13,12 +13,15 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Colors } from "../constants/Colors";
-import { useColorScheme } from "../hooks/useColorScheme";
-import { supabase, Product, Category } from "../lib/supabase";
-import { useToast } from "../contexts/ToastContext";
-import { ImageUpload, uploadProductImage } from "../components/ImageUpload";
-import BarcodeScanner from "../components/BarcodeScanner";
+import { Colors } from "../../../constants/Colors";
+import { useColorScheme } from "../../../hooks/useColorScheme";
+import { supabase, Product, Category } from "../../../lib/supabase";
+import { useToast } from "../../../contexts/ToastContext";
+import { useInventory } from "../../../contexts/InventoryContext";
+import { useCurrency } from "../../../contexts/CurrencyContext";
+import { useProducts } from "../../../contexts/ProductContext";
+import { ImageUpload, uploadProductImage } from "../../../components/ImageUpload";
+import BarcodeScanner from "../../../components/BarcodeScanner";
 
 
 interface FormInputProps {
@@ -75,6 +78,9 @@ export default function AddProduct() {
   const colors = Colors[colorScheme];
   const styles = createStyles(colors);
   const { showToast } = useToast();
+  const { recordBatchStockMovement } = useInventory();
+  const { formatAmount } = useCurrency();
+  const { addProductToState, updateProductInState } = useProducts();
 
   const [productName, setProductName] = useState("");
   const [sku, setSku] = useState("");
@@ -166,7 +172,7 @@ export default function AddProduct() {
         });
       }
 
-      // Create product object
+      // Create product object with 0 initial stock
       const newProduct: Partial<Product> = {
         name: productName.trim(),
         sku: sku.trim(),
@@ -175,22 +181,89 @@ export default function AddProduct() {
         category_id: selectedCategoryId || undefined,
         price: parseFloat(price),
         cost_price: cost ? parseFloat(cost) : undefined,
-        stock_quantity: parseInt(quantity),
+        stock_quantity: 0, // Start with 0, will add via stock movement
         min_stock_level: minStock ? parseInt(minStock) : 10,
         image_url: imageUrl || undefined,
       };
 
       // Insert product into Supabase
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('products')
         .insert([newProduct])
-        .select()
+        .select(`
+          *,
+          categories:category_id (
+            id,
+            name
+          )
+        `)
         .single();
 
       if (error) throw error;
 
-      showToast('Product added successfully!', 'success');
-      router.back();
+      // Add the new product to the local state immediately
+      addProductToState(data);
+
+      // If there's initial stock, create a batch and record it as a stock-in movement (same as stock-in page)
+      if (quantity && parseInt(quantity) > 0 && data) {
+        // Generate reference number for initial stock batch
+        const date = new Date();
+        const year = date.getFullYear().toString().slice(-2);
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        const refNumber = `INIT-${year}${month}${day}-${random}`;
+
+        // Create batch with stock movement (like stock-in does)
+        const batchId = await recordBatchStockMovement(
+          [{
+            product_id: data.id,
+            type: 'in',
+            quantity: parseInt(quantity),
+            notes: `Initial stock: ${quantity} units at ${cost ? formatAmount(parseFloat(cost)) : 'N/A'} each`
+          }],
+          {
+            type: 'in',
+            reference: refNumber,
+            supplier: 'Initial Inventory',
+            notes: `Initial stock for new product: ${productName.trim()}`
+          }
+        );
+
+        if (!batchId) {
+          showToast('Product added but failed to record initial stock batch', 'warning');
+          router.back();
+          return;
+        }
+
+        // Update product cost price if provided (like stock-in does)
+        if (cost) {
+          const { error: updateError } = await supabase
+            .from('products')
+            .update({
+              cost_price: parseFloat(cost),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', data.id);
+
+          if (updateError) {
+            console.error('Failed to update product cost:', updateError);
+          }
+        }
+
+        // Update the product's stock in local state after successful batch creation
+        updateProductInState(data.id, { 
+          stock_quantity: parseInt(quantity),
+          cost_price: cost ? parseFloat(cost) : data.cost_price
+        });
+
+        showToast(`Product added with initial stock batch ${refNumber}`, 'success');
+      } else {
+        showToast('Product added successfully!', 'success');
+      }
+
+      // Navigate to products tab explicitly to ensure proper state update
+      router.replace('/(tabs)/products');
     } catch (error: any) {
       console.error('Error saving product:', error);
       showToast(error.message || 'Failed to add product', 'error');
@@ -456,7 +529,8 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: Platform.OS === "android" ? 40 : 10,
+    paddingBottom: 16,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,

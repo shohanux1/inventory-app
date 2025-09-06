@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -167,7 +168,7 @@ export default function Splash() {
           ]}
         >
           <LinearGradient
-            colors={["#3B82F6", "#8B5CF6"]}
+            colors={["#3B82F6", "#2563EB"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.logoGradient}
@@ -177,7 +178,7 @@ export default function Splash() {
                 transform: [{ rotate: spin }],
               }}
             >
-              <Ionicons name="cube-outline" size={36} color="#FFFFFF" />
+              <Ionicons name="cube" size={32} color="#FFFFFF" />
             </Animated.View>
           </LinearGradient>
         </Animated.View>
@@ -278,7 +279,7 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 50,
     backgroundColor: "#3B82F6",
-    opacity: 0.05,
+    opacity: Platform.OS === "android" ? 0.03 : 0.05,
     top: 60,
     left: -30,
   },
@@ -288,7 +289,7 @@ const styles = StyleSheet.create({
     height: 150,
     borderRadius: 30,
     backgroundColor: "#8B5CF6",
-    opacity: 0.03,
+    opacity: Platform.OS === "android" ? 0.02 : 0.03,
     top: height * 0.4,
     right: -50,
     transform: [{ rotate: "45deg" }],
@@ -299,7 +300,7 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 20,
     backgroundColor: "#EC4899",
-    opacity: 0.04,
+    opacity: Platform.OS === "android" ? 0.025 : 0.04,
     bottom: 100,
     left: 30,
     transform: [{ rotate: "15deg" }],
@@ -311,11 +312,17 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     marginBottom: 32,
-    shadowColor: "#3B82F6",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#3B82F6",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   logoGradient: {
     width: 80,
@@ -328,10 +335,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   appName: {
-    fontSize: 38,
-    fontWeight: "300",
+    fontSize: Platform.OS === "android" ? 36 : 38,
+    fontWeight: Platform.OS === "android" ? "400" : "300",
     color: "#111827",
-    letterSpacing: 2,
+    letterSpacing: Platform.OS === "android" ? 1.5 : 2,
     marginBottom: 8,
   },
   underline: {
@@ -355,9 +362,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: Platform.OS === "android" ? 6 : 8,
+    height: Platform.OS === "android" ? 6 : 8,
+    borderRadius: Platform.OS === "android" ? 3 : 4,
     backgroundColor: "#3B82F6",
   },
   bottomDecoration: {
