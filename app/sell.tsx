@@ -1555,7 +1555,7 @@ const createStyles = (colors: typeof Colors.light) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    height: 48,
     marginBottom: 12,
   },
   currencySymbol: {

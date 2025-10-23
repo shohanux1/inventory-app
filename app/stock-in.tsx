@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Keyboard,
@@ -17,11 +17,11 @@ import {
 import BarcodeScanner from "../components/BarcodeScanner";
 import { SearchBarWithScanner } from "../components/SearchBarWithScanner";
 import { Colors } from "../constants/Colors";
-import { useColorScheme } from "../hooks/useColorScheme";
-import { useProducts, Product } from "../contexts/ProductContext";
-import { useInventory } from "../contexts/InventoryContext";
-import { useToast } from "../contexts/ToastContext";
 import { useCurrency } from "../contexts/CurrencyContext";
+import { useInventory } from "../contexts/InventoryContext";
+import { Product, useProducts } from "../contexts/ProductContext";
+import { useToast } from "../contexts/ToastContext";
+import { useColorScheme } from "../hooks/useColorScheme";
 
 interface StockEntry {
   productId: string;
@@ -844,7 +844,7 @@ const createStyles = (colors: typeof Colors.light) =>
       fontWeight: "500",
     },
     readOnlyInput: {
-      backgroundColor: colors.backgroundDark,
+      backgroundColor: colors.textSecondary,
       color: colors.textSecondary,
     },
     input: {

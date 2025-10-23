@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: pos-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-posuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pospassword}
+      POSTGRES_DB: ${DB_NAME:-posdb}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U posuser -d posdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pos-backend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://${DB_USER:-posuser}:${DB_PASSWORD:-pospassword}@postgres:5432/${DB_NAME:-posdb}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:8081}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+    command: npm run dev
+
+  # Redis for caching/sessions (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: pos-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:

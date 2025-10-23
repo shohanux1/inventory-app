@@ -52,50 +52,136 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const { showToast } = useToast();
 
-  // Load currency preference on mount
+  // Load currency preference on mount and auth state changes
   useEffect(() => {
-    loadCurrencyPreference();
+    // Initial load with small delay to ensure auth is ready
+    const timer = setTimeout(() => {
+      loadCurrencyPreference();
+    }, 500);
+    
+    // Subscribe to auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        console.log('User signed in, reloading currency preference');
+        // Wait a bit for profile to be available
+        setTimeout(() => {
+          loadCurrencyPreference();
+        }, 1000);
+      } else if (event === 'SIGNED_OUT') {
+        // Reset to default currency on sign out
+        setCurrencyState(CURRENCIES[0]);
+        AsyncStorage.removeItem('currency_preference');
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Reload on token refresh
+        loadCurrencyPreference();
+      }
+    });
+
+    return () => {
+      clearTimeout(timer);
+      authListener?.subscription.unsubscribe();
+    };
   }, []);
 
   const loadCurrencyPreference = async () => {
     try {
-      // First check local storage for offline support
-      const cachedCurrency = await AsyncStorage.getItem('currency_preference');
-      if (cachedCurrency) {
-        const parsed = JSON.parse(cachedCurrency);
-        const foundCurrency = CURRENCIES.find(c => c.code === parsed.code);
-        if (foundCurrency) {
-          setCurrencyState(foundCurrency);
+      setIsLoading(true);
+      
+      // First try to get the authenticated user
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.log('Auth error:', authError);
+        // Try loading from cache if auth fails
+        const cachedCurrency = await AsyncStorage.getItem('currency_preference');
+        if (cachedCurrency) {
+          const parsed = JSON.parse(cachedCurrency);
+          const foundCurrency = CURRENCIES.find(c => c.code === parsed.code);
+          if (foundCurrency) {
+            setCurrencyState(foundCurrency);
+          }
         }
+        return;
       }
-
-      // Then fetch from database
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
+      
+      if (user && user.id) {
+        console.log('Fetching currency for user:', user.id);
+        
+        // Fetch from database first (source of truth)
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('currency, currency_symbol')
+          .select('id, currency, currency_symbol')
           .eq('id', user.id)
-          .single();
+          .maybeSingle(); // Use maybeSingle instead of single to avoid error if not found
 
-        if (data && !error) {
-          const foundCurrency = CURRENCIES.find(c => c.code === data.currency) || CURRENCIES[0];
-          setCurrencyState(foundCurrency);
-          // Cache it locally
-          await AsyncStorage.setItem('currency_preference', JSON.stringify(foundCurrency));
-        } else if (error && error.code === 'PGRST116') {
-          // Profile doesn't exist, create it
-          await supabase
+        console.log('Profile data:', profile, 'Error:', profileError);
+
+        if (profile && profile.currency) {
+          console.log('Found currency in database:', profile.currency);
+          const foundCurrency = CURRENCIES.find(c => c.code === profile.currency);
+          if (foundCurrency) {
+            console.log('Setting currency to:', foundCurrency);
+            setCurrencyState(foundCurrency);
+            // Cache it locally for offline support
+            await AsyncStorage.setItem('currency_preference', JSON.stringify(foundCurrency));
+            return; // Exit early if we found the currency in database
+          }
+        } else if (!profile) {
+          // Profile doesn't exist, create it with default or cached value
+          console.log('Profile not found, creating new profile');
+          
+          // Check cache first
+          const cachedCurrency = await AsyncStorage.getItem('currency_preference');
+          let defaultCurrency = 'USD';
+          let defaultSymbol = '$';
+          
+          if (cachedCurrency) {
+            const parsed = JSON.parse(cachedCurrency);
+            defaultCurrency = parsed.code || 'USD';
+            defaultSymbol = parsed.symbol || '$';
+          }
+          
+          const { error: insertError } = await supabase
             .from('profiles')
             .insert({
               id: user.id,
-              currency: 'USD',
-              currency_symbol: '$'
+              currency: defaultCurrency,
+              currency_symbol: defaultSymbol,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
             });
+            
+          if (insertError) {
+            console.log('Error creating profile:', insertError);
+          }
+        }
+      } else {
+        // No user, load from cache
+        const cachedCurrency = await AsyncStorage.getItem('currency_preference');
+        if (cachedCurrency) {
+          console.log('No user, loading from cache');
+          const parsed = JSON.parse(cachedCurrency);
+          const foundCurrency = CURRENCIES.find(c => c.code === parsed.code);
+          if (foundCurrency) {
+            setCurrencyState(foundCurrency);
+          }
         }
       }
     } catch (error) {
       console.error('Error loading currency preference:', error);
+      // Try loading from cache as last resort
+      try {
+        const cachedCurrency = await AsyncStorage.getItem('currency_preference');
+        if (cachedCurrency) {
+          const parsed = JSON.parse(cachedCurrency);
+          const foundCurrency = CURRENCIES.find(c => c.code === parsed.code);
+          if (foundCurrency) {
+            setCurrencyState(foundCurrency);
+          }
+        }
+      } catch (cacheError) {
+        console.error('Error loading from cache:', cacheError);
+      }
     } finally {
       setIsLoading(false);
     }
